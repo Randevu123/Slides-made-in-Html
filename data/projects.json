@@ -1,0 +1,13 @@
+{
+  "items": [
+    {
+      "slug": "slides-in-html",
+      "title": "Slides-in-Html — 규칙을 기계가 검사하게 만든 슬라이드 스킬",
+      "date": "2026-08-27",
+      "status": "만드는 중",
+      "page": "slides-in-html.html",
+      "summary": "PPTX의 폰트 깨짐을 없앤 단일 HTML 슬라이드 생성 스킬. 디자인 규칙을 문서로 적어 두는 대신, 지켰는지 기계가 검사하게 만들었다. 결정 66건과 아직 못 고친 13건까지 그대로 공개한다.",
+      "tags": ["Claude 스킬", "단일 HTML", "발표 자료", "자동 검사"]
+    }
+  ]
+}

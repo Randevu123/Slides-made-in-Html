@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="ko" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>프로젝트 — 문혁재</title>
+<meta name="description" content="">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#101114">
+<meta property="og:type" content="article">
+<meta property="og:locale" content="ko_KR">
+<link rel="icon" href="../favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+<link rel="stylesheet" href="../assets/css/site.css">
+<script src="../assets/js/config.js" defer></script>
+<script src="../assets/js/content.js" defer></script>
+<script src="../assets/js/site.js" defer></script>
+<script src="../assets/js/entry.js" defer></script>
+<script src="../assets/js/suggest.js" defer></script>
+</head>
+<body>
+<a class="skip" href="#main">본문으로 건너뛰기</a>
+
+<header class="nav">
+  <div class="wrap wrap-wide nav-in">
+    <a class="brand" href="../index.html">문혁재<span class="brand-sub">만든 것과 생각</span></a>
+    <nav class="nav-links" aria-label="주요">
+      <a href="../index.html">홈</a>
+      <a href="index.html" aria-current="page">프로젝트</a>
+      <a href="../blog/index.html">글</a>
+      <a href="../about.html">소개</a>
+      <button type="button" class="mini" data-theme-toggle aria-pressed="true">라이트</button>
+    </nav>
+  </div>
+</header>
+
+<main id="main" class="wrap" data-entry="projects" data-base="..">
+  <article>
+    <header class="post-head">
+      <div class="post-meta">
+        <span class="meta" id="e-date"></span>
+        <span class="badge" id="e-kicker"></span>
+        <ul class="item-tags" id="e-tags"></ul>
+      </div>
+      <h1 id="e-title">불러오는 중…</h1>
+      <p class="lead" id="e-summary"></p>
+    </header>
+    <div class="prose" id="e-body"></div>
+  </article>
+
+  <!-- 수정 제안 -->
+  <section class="sec" id="suggest-block" hidden aria-labelledby="h-sug">
+    <p class="sec-n">제안</p>
+    <h2 id="h-sug" class="sec-h">고칠 것이 보이면 알려 주세요</h2>
+    <p class="sec-sub">
+      남겨 주신 제안은 스프레드시트에 쌓여 <b>다음에 고칠 목록</b>이 됩니다.
+      이름 없이 내용만 적어도 됩니다.
+    </p>
+    <form class="form" id="suggest-form" novalidate>
+      <div class="field">
+        <span class="flabel" id="lbl-kind">어떤 이야기인가요?</span>
+        <div class="radios" role="radiogroup" aria-labelledby="lbl-kind">
+          <label><input type="radio" name="kind" value="버그" checked> 잘못 동작해요</label>
+          <label><input type="radio" name="kind" value="개선"> 이렇게 바꾸면 좋겠어요</label>
+          <label><input type="radio" name="kind" value="새 기능"> 이런 게 있었으면</label>
+          <label><input type="radio" name="kind" value="기타"> 그 밖에</label>
+        </div>
+      </div>
+      <div class="field">
+        <label for="sg-body">내용 <span class="hint">(필수)</span></label>
+        <textarea id="sg-body" name="body" required
+          placeholder="어떤 화면에서 무엇을 하려다 무엇이 안 됐는지 적어 주시면 가장 도움이 됩니다."></textarea>
+      </div>
+      <div class="two">
+        <div class="field">
+          <label for="sg-name">이름 <span class="hint">(안 적어도 됩니다)</span></label>
+          <input type="text" id="sg-name" name="name" autocomplete="name" maxlength="60">
+        </div>
+        <div class="field">
+          <label for="sg-contact">답이 필요하면 연락처 <span class="hint">(선택)</span></label>
+          <input type="text" id="sg-contact" name="contact" maxlength="120" placeholder="메일 주소 등">
+        </div>
+      </div>
+      <div class="field" aria-hidden="true" style="position:absolute;left:-9999px">
+        <label for="sg-web">이 칸은 비워 두세요</label>
+        <input type="text" id="sg-web" name="website" tabindex="-1" autocomplete="off">
+      </div>
+      <div class="form-foot">
+        <button type="submit" class="btn btn-1" id="suggest-send">제안 보내기</button>
+        <button type="button" class="btn" id="suggest-copy" hidden>내용 복사</button>
+        <span class="status" id="suggest-status" role="status"></span>
+      </div>
+    </form>
+  </section>
+
+  <nav class="post-nav">
+    <a class="link" href="index.html">← 프로젝트 목록</a>
+    <a class="link" href="../index.html">홈</a>
+  </nav>
+</main>
+
+<footer class="foot">
+  <div class="wrap wrap-wide foot-meta">
+    <p><b>문혁재</b> · 더큰내일교육센터 AI 취업역량강화 과정</p>
+    <p class="foot-links">
+      <a class="link" href="../index.html">홈</a>
+      <a class="link" href="../blog/index.html">글</a>
+      <a class="link" href="../about.html">소개</a>
+    </p>
+  </div>
+</footer>
+</body>
+</html>
