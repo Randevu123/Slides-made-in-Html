@@ -1,0 +1,2351 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Slides-in-Html 스킬 제작 결과</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.css">
+<style>
+/* ==========================================================================
+   Slides-in-Html — 대외 발표용 단일 HTML 슬라이드 엔진
+   1920x1080 고정 무대를 화면 크기에 맞춰 통째로 scale 한다.
+   :root 와 엔진 스크립트는 건드리지 않는다.
+   프로젝트마다 바뀌는 값은 "1. 브랜드 색" "2. 폰트" 두 블록과 로고/사진 뿐이다.
+   ========================================================================== */
+:root{
+  /* ---- 1. 브랜드 색 (주조 65% : 보조 25% : 강조 10% — 프로젝트마다 교체) ---- */
+  /* 기본값은 무채색이다. 로고나 브랜드 색을 모를 때는 이대로 쓴다.
+     브랜드 색이 있으면 아래 한 줄을 실행해서 나온 블록으로 통째로 갈아 끼운다.
+       node assets/palette.mjs "#주조" "#보조" "#강조"
+     손으로 색만 바꾸지 않는다 — 글자용 색과 차트 강조색은 대비 계산으로 정해진 값이다. */
+  --c-main:#6f747c;      --c-main-tint:#f1f1f2;
+  --c-sub:#2f3238;       --c-sub-tint:#f0f1f1;
+  --c-accent:#121417;    --c-accent-tint:#e3e3e3;
+  --c-main-text:#595d64;    /* eyebrow 같은 조용한 라벨용 */
+  --c-emph:#121314;         /* 본문 안 강조용 — 무채색에서는 본문보다 어두워야 강조로 읽힌다 */
+  --c-main-ondark:#767c84;  /* 목차 오버레이처럼 항상 어두운 UI 전용, 테마와 무관 */
+  --c-chart-hi:#121417;     /* 차트에서 강조하는 막대 하나 — 나머지 막대와 밝기가 벌어져 있다 */
+  --on-main:#ffffff;      --on-sub:#ffffff;      --on-accent:#ffffff;  /* 그 면 위에 얹는 글자색 */
+
+  /* ---- 2. 폰트 (기본 Pretendard, 대안은 style-guide.md 참고) ---- */
+  --font:"Pretendard Variable","Pretendard",-apple-system,BlinkMacSystemFont,
+         "Apple SD Gothic Neo","Malgun Gothic","Noto Sans KR",sans-serif;
+
+  /* ---- 라이트 테마 기본값 (건드리지 않음) ---- */
+  --bg:#ffffff;          --panel:#f4f6fa;
+  --text:#121314;        --text-soft:#5b5f66;      --text-faint:#6a6e75;
+  --line:#e4e7ee;
+  --shadow:0 4px 20px rgba(0,0,0,.04);
+
+  --r:20px; --r-sm:16px;
+  --mono:"D2Coding","JetBrains Mono","SFMono-Regular",Consolas,Menlo,monospace;
+}
+/* ---- 다크 테마: <html data-theme="dark"> 를 붙이면 적용 ---- */
+html[data-theme="dark"]{
+  --bg:#101114;          --panel:#1b1d22;
+  --text:#f2f3f5;        --text-soft:#a8adb6;      --text-faint:#8b909a;
+  --line:#2a2d33;
+  --shadow:0 4px 24px rgba(0,0,0,.35);
+  --c-main-tint:#232529;  --c-sub-tint:#151619;  --c-accent-tint:#101215;
+  --c-main-text:#999da4;
+  --c-emph:#f2f3f5;
+  --c-chart-hi:#ccd0d7;
+}
+
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;background:#0d1017}
+body{font-family:var(--font);color:var(--text);-webkit-font-smoothing:antialiased}
+
+/* ---------- 무대 ---------- */
+#deck{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}
+/* flex:0 0 auto 가 없으면 창이 1920px보다 좁을 때 무대가 가로로 찌그러진다.
+   (flex 아이템의 기본 flex-shrink:1 이 width:1920px 을 무시하고 줄인다)
+   그러면 16:9 가 깨지고 내부 배치가 통째로 어긋난다. 절대 지우지 말 것. */
+#stage{width:1920px;height:1080px;flex:0 0 auto;position:relative;transform-origin:center center;
+       box-shadow:0 24px 90px rgba(0,0,0,.55);border-radius:2px;overflow:hidden}
+/* 줄 나눔은 '단어(어절)' 기준이다. word-break:keep-all 이 없으면 한글이 글자 단위로
+   아무 데서나 잘려서, 제목이 "다음 분기, 무엇을 바꿀 것인/가" 처럼 어색하게 끊긴다.
+   어절 하나가 줄보다 길 때만 overflow-wrap 이 마지막 수단으로 잘라 준다. */
+.slide{position:absolute;inset:0;background:var(--bg);
+       padding:96px 120px 84px;display:none;flex-direction:column;overflow:hidden;
+       word-break:keep-all;overflow-wrap:break-word;line-break:strict}
+.slide.active{display:flex;animation:fade .32s ease}
+@keyframes fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+
+/* ---------- 타이포 ---------- */
+h1{font-size:96px;line-height:1.18;font-weight:600;color:var(--text)}
+h2{font-size:56px;line-height:1.26;font-weight:600;color:var(--text)}
+h3{font-size:32px;line-height:1.35;font-weight:600;color:var(--text)}
+p{font-size:28px;line-height:1.6;color:var(--text)}
+.eyebrow{font-size:22px;font-weight:600;letter-spacing:normal;color:var(--c-main-text);
+         text-transform:uppercase;margin-bottom:16px}
+.lead{font-size:32px;color:var(--text-soft);line-height:1.55}
+.note{font-size:20px;color:var(--text-faint)}
+.hl{color:var(--c-emph);font-weight:600}
+.mark{background:var(--c-accent-tint);border-radius:6px;padding:2px 10px;color:var(--text);font-weight:600}
+strong,b{color:var(--c-emph);font-weight:700}
+
+/* 소제목(부제목) — 제목 h2 바로 아래 붙는 보조 설명문. 배경 워터마크 아님 */
+.shead{flex:0 0 auto;margin-bottom:52px}
+.shead h2{margin-bottom:14px}
+.shead .sub{font-size:28px;font-weight:600;line-height:1.5;color:var(--text);opacity:.5}
+
+.body-main{flex:1;min-height:0;display:flex;flex-direction:column;gap:28px}
+.body-main.center{justify-content:center}
+.fill{flex:1;min-height:0}
+
+/* ---------- 개념 한 문장 (.message) — 2단 예외 ① ---------- */
+.message{font-size:60px;line-height:1.4;font-weight:600;color:var(--text)}
+.message em{font-style:normal;color:var(--c-emph);font-weight:700}
+
+/* ---------- 인용구 (.quote) — 2단 예외 ② ---------- */
+.quote{display:flex;flex-direction:column;gap:32px}
+.quote blockquote{font-size:52px;line-height:1.45;font-weight:600;color:var(--text);
+                  position:relative;padding-left:56px}
+.quote blockquote::before{content:"“";position:absolute;left:0;top:-10px;
+                          font-size:80px;color:var(--c-emph);font-weight:700}
+.quote .who{font-size:26px;color:var(--text-soft);font-weight:500}
+.quote .who b{color:var(--text);font-weight:700}
+
+/* ---------- 큰 수치 (.bignums) — 2단 예외 ③ ---------- */
+.bignums{display:grid;grid-template-columns:repeat(var(--n,3),1fr);gap:44px}
+/* 큰 수치는 슬라이드에서 가장 강해야 한다. --c-main 은 표지 배경을 겸하느라 중간 톤이라
+   여기에 쓰면 제목보다 흐려진다. 텍스트용 강조색을 쓴다. */
+.bignum .v{font-size:96px;font-weight:700;line-height:1;color:var(--c-emph)}
+.bignum .v .u{font-size:44px;font-weight:600;margin-left:6px;color:var(--text-soft)}
+.bignum .k{font-size:24px;font-weight:600;margin-top:16px;color:var(--text-soft)}
+/* 숫자 2~3개만 있는 슬라이드는 1920x1080 무대에서 허전해 보인다.
+   .panels 를 붙이면 각 수치가 면을 갖고 화면을 채운다. */
+.bignums.panels{align-items:stretch}
+.bignums.panels .bignum{background:var(--panel);border-radius:var(--r);padding:56px 44px;
+                        display:flex;flex-direction:column;justify-content:center}
+
+/* ---------- 사진 1장 (.photo-hero) — 2단 예외 ④ ---------- */
+.photo-hero{position:relative;flex:1;min-height:0;border-radius:var(--r);overflow:hidden;background:var(--panel)}
+.photo-hero img{width:100%;height:100%;object-fit:cover;display:block;
+                object-position:var(--px,50%) var(--py,50%)}
+/* 스크린샷·도표처럼 잘리면 안 되는 이미지는 .fit 을 붙인다.
+   기본값(cover)은 상자를 꽉 채우는 대신 이미지 가장자리를 잘라낸다 — 분위기 사진에만 쓴다. */
+.photo-hero.sized{flex:0 0 auto;align-self:flex-start}
+.photo-hero.fit{background:var(--panel)}
+.photo-hero.fit img{object-fit:contain}
+.photo-hero.bleed{position:absolute;top:0;bottom:0;border-radius:0;z-index:0}
+.photo-hero.bleed.left{left:0;width:56%}
+.photo-hero.bleed.right{right:0;width:56%}
+/* 표지처럼 .body-main 이 없는 장에서도 왼쪽/오른쪽 사진이 되게 한다.
+   사진이 반쪽을 통째로 채우고, 글은 반대쪽으로 밀린다.
+   (안 밀면 사진 위에 글이 겹쳐서 읽을 수 없다) */
+.slide.side-left{padding-left:calc(56% + 80px)}
+.slide.side-right{padding-right:calc(56% + 80px)}
+/* absolute 인 사진보다 글이 위에 오게 한다 — 꼬리말·출처·로고는 이미 자리를 잡고 있어 건드리지 않는다 */
+.slide.side-left  > *:not(.photo-hero):not(.foot):not(.credit):not(.cite):not(.logo):not(.float-img),
+.slide.side-right > *:not(.photo-hero):not(.foot):not(.credit):not(.cite):not(.logo):not(.float-img){
+  position:relative;z-index:1}
+/* 자유 사진은 어떤 경우에도 absolute 를 지킨다 (위 규칙보다 뒤에 두어 확실히 이긴다) */
+.slide .float-img{position:absolute}
+
+/* ---------- 배경 사진 (어느 슬라이드에나) ----------
+   사진 위에 글자를 얹으면 대비를 계산으로 보장할 수 없다. 그래서 사진 위에 '막'을 반드시 깐다.
+   막 색은 슬라이드 성격에 따라 다르다 — 글자가 밝으면 어두운 막, 글자가 어두우면 밝은 막. */
+.bg-photo{position:absolute;inset:0;z-index:0;overflow:hidden}
+.bg-photo img{width:100%;height:100%;object-fit:cover;display:block;
+              object-position:var(--px,50%) var(--py,50%)}
+.bg-photo::after{content:"";position:absolute;inset:0;background:var(--veil)}
+/* 막의 진하기는 --veil-a 하나로 조절한다. 편집기의 '사진 투명도' 슬라이더가 이 값을 바꾼다.
+   슬라이더 100% = 막 없음(사진 그대로), 낮출수록 막이 두꺼워져 사진이 옅어진다.
+   기본값 .90 은 슬라이더에서 사진 10% 로 보인다. */
+.slide.has-bgphoto{--veil-a:.90;--veil:rgba(255,255,255,var(--veil-a))}  /* 본문: 밝은 막 */
+html[data-theme="dark"] .slide.has-bgphoto{--veil:rgba(16,17,20,var(--veil-a))}  /* 다크: 어두운 막 */
+/* 표지에서는 사진이 '글자 쪽으로 갈수록 사라지게' 한다 (요구사항 명세 8-8).
+   막을 덧씌워 어둡게 하는 것과 다르다 — 사진 자체가 슬라이드 바탕색으로 녹아든다.
+   그래서 글자가 놓이는 왼쪽은 사진이 없는 순수한 주조색이 되어 대비가 보장된다.
+   ::after 로 깐 막도 .bg-photo 안에 있으므로 같이 사라진다. */
+.slide.cover.has-bgphoto .bg-photo{
+  -webkit-mask-image:linear-gradient(90deg,transparent 0%,rgba(0,0,0,.22) 26%,
+                                     rgba(0,0,0,.72) 54%,#000 76%);
+          mask-image:linear-gradient(90deg,transparent 0%,rgba(0,0,0,.22) 26%,
+                                     rgba(0,0,0,.72) 54%,#000 76%)}
+/* 반쪽 사진도 글자와 만나는 쪽이 사라진다 */
+.slide.side-left > .photo-hero.bleed{
+  -webkit-mask-image:linear-gradient(90deg,#000 0%,#000 58%,transparent 100%);
+          mask-image:linear-gradient(90deg,#000 0%,#000 58%,transparent 100%)}
+.slide.side-right > .photo-hero.bleed{
+  -webkit-mask-image:linear-gradient(270deg,#000 0%,#000 58%,transparent 100%);
+          mask-image:linear-gradient(270deg,#000 0%,#000 58%,transparent 100%)}
+.slide.cover.has-bgphoto,.slide.closing.has-bgphoto{                   /* 표지·마무리: 어두운 막 */
+  background:var(--c-main);--veil-a:.90;   /* 사진이 사라진 자리에 드러나는 바탕 — 글자색(--on-main)의 짝 */
+  --veil:linear-gradient(90deg,
+    rgba(10,12,16,calc(var(--veil-a) * .96)) 0%,
+    rgba(10,12,16,calc(var(--veil-a) * .80)) 52%,
+    rgba(10,12,16,calc(var(--veil-a) * .61)) 100%)}
+.slide.has-bgphoto > *:not(.bg-photo){z-index:1}
+/* 꼬리말·출처·로고·자유 사진은 이미 absolute 로 자리를 잡고 있으므로 position 을 건드리면 안 된다.
+   .float-img 를 빼먹으면 자유 사진이 relative 가 되어 본문 흐름 속으로 끌려 들어간다
+   — 표지에 배경 사진을 깔고 자유 사진을 넣었을 때 "텍스트 박스 안에 들어간 것처럼" 보이던 원인이다. */
+.slide.has-bgphoto > *:not(.bg-photo):not(.foot):not(.credit):not(.cite):not(.logo):not(.float-img){position:relative}
+
+/* ---------- 자유 사진 ----------
+   슬라이드 어디에나 놓고, 크기를 바꾸고, 틀 안에서 사진을 움직여 잘라낸다.
+   틀이 곧 자르는 창이다. 틀보다 큰 부분은 잘려 보이지 않는다. */
+.float-img{position:absolute;z-index:3;overflow:hidden;border-radius:var(--r-sm)}
+.float-img img{width:100%;height:100%;object-fit:cover;display:block;
+               object-position:var(--px,50%) var(--py,50%)}
+html.editing .float-img{outline:1px dashed rgba(59,111,212,.55);outline-offset:2px;cursor:move}
+/* 자유 사진뿐 아니라 본문 사진·배경 사진도 눌러서 고른다 (요구사항 명세 8-6, 8-10) */
+html.editing .photo-hero{outline:1px dashed rgba(59,111,212,.35);outline-offset:-2px;cursor:pointer}
+html.editing .float-img.sel,html.editing .photo-hero.sel,
+html.editing .bg-photo.sel{outline:2px solid #3b6fd4;outline-offset:-2px}
+html.editing .float-img.sel{outline-offset:2px}
+html.editing .hd{position:absolute;right:-7px;bottom:-7px;width:16px;height:16px;
+  background:#3b6fd4;border:2px solid #fff;border-radius:50%;cursor:nwse-resize;display:none;z-index:6}
+html.editing .photo-hero .hd{right:6px;bottom:6px}
+html.editing .sel > .hd{display:block}
+html.editing .float-img.crop,html.editing .photo-hero.crop{cursor:grab;outline-color:#e0a020}
+html.editing .float-img.crop.sel,html.editing .photo-hero.crop.sel,
+html.editing .bg-photo.crop.sel{outline:2px solid #e0a020}
+.hd{display:none}
+@media print{ .float-img,.photo-hero{outline:0!important} .hd{display:none!important} }
+
+/* 본문 슬라이드에 사진 자리를 '새로 만들어' 좌우로 나눌 때 */
+.two.photo-split{align-items:stretch}
+.two.photo-split > .photo-hero{height:100%;min-height:0}
+
+/* ---------- 표지 / 마무리 ---------- */
+.slide.cover{justify-content:center;background:var(--c-main)}
+/* 마무리 장은 통째로 '보조색'이다. 예전에는 --c-sub 를 쓰는 곳이 두 군데뿐이라
+   보조색을 바꿔도 화면이 거의 안 바뀌었다 (요구사항 명세 8-3). */
+.slide.closing{justify-content:center;background:var(--c-sub)}
+.slide.cover h1,.slide.cover .lead,.slide.cover .course{max-width:1100px;color:var(--on-main)}
+.slide.cover .course{font-size:26px;font-weight:600;color:var(--on-main);opacity:.85;margin-bottom:28px}
+.slide.cover .lead{color:var(--on-main);opacity:.85}
+.slide.cover h1{margin-bottom:36px;color:var(--on-main)}
+.slide.cover .meta{margin-top:auto;display:flex;gap:40px;align-items:baseline;
+                   font-size:24px;color:var(--on-main);opacity:.92;font-weight:600}
+.slide.cover .meta .who{color:var(--on-main);font-weight:600}
+.cover-bar{width:120px;height:10px;border-radius:99px;background:var(--on-main);margin-bottom:44px;opacity:.9}
+
+.slide.closing{align-items:center;text-align:center}
+.slide.closing h2{font-size:72px;color:var(--on-sub);font-weight:600}
+.slide.closing .sub{color:var(--on-sub);opacity:.85;margin-top:26px;font-size:30px}
+
+/* ---------- 목차 (.agenda) — 좌측 큰 타이틀 + 우측 하단 리스트 ---------- */
+.slide.toc{flex-direction:row;align-items:stretch}
+/* 제목은 왼쪽 '위', 항목 리스트는 오른쪽 아래 */
+.toc-title{flex:0 0 auto;display:flex;flex-direction:column;justify-content:flex-start}
+.toc-title .eyebrow{margin-bottom:20px}
+.toc-title h1{font-size:112px}
+.agenda{margin-left:auto;align-self:flex-end;width:760px;display:flex;flex-direction:column;gap:0}
+.ag{display:flex;align-items:center;gap:28px;padding:26px 8px;border-bottom:2px solid var(--line)}
+.ag:last-child{border-bottom:0}
+.ag .n{flex:0 0 auto;width:56px;height:56px;border-radius:var(--r-sm);background:var(--panel);
+       color:var(--c-main-text);font-size:24px;font-weight:700;
+       display:flex;align-items:center;justify-content:center}
+.ag .t{font-size:30px;font-weight:600;color:var(--text)}
+.ag .d{margin-left:auto;font-size:22px;color:var(--text-faint)}
+.ag.now .n{background:var(--c-main);color:var(--on-main)}
+.ag.now .t{color:var(--c-emph)}
+.ag.done .t{color:var(--text-faint)}
+
+/* ---------- 좌우 2단 (기본) ---------- */
+.two{display:grid;grid-template-columns:1fr 1fr;gap:32px;flex:1;min-height:0}
+.two.w7{grid-template-columns:1.35fr 1fr}
+.two.w3{grid-template-columns:1fr 1.35fr}
+.stack{display:flex;flex-direction:column;gap:24px;min-height:0}
+.panel{background:var(--panel);border-radius:var(--r);padding:36px 40px;display:flex;
+       flex-direction:column;min-height:0}
+.panel .h{font-size:24px;font-weight:700;color:var(--c-emph);margin-bottom:20px}
+.panel p{font-size:26px;color:var(--text-soft)}
+
+/* ---------- 카드 그리드 ---------- */
+.grid{display:grid;gap:26px}
+.g2{grid-template-columns:repeat(2,1fr)}
+.g3{grid-template-columns:repeat(3,1fr)}
+.g4{grid-template-columns:repeat(4,1fr)}
+.card{background:var(--bg);border:2px solid var(--line);border-radius:var(--r);
+      padding:36px 38px;display:flex;flex-direction:column}
+/* 카드·패널이 내용보다 길게 늘어나 빈 면이 남는 것을 막는다.
+   .body-main 이 세로를 채우려 하므로, 늘리고 싶을 때만 .fill 을 붙인다. */
+.grid,.two{align-items:start;align-content:center}
+.two>.stack,.two>.fill,.grid>.fill{align-self:stretch}
+.card.tint{background:var(--panel);border-color:var(--panel)}
+.card.hi{border-color:var(--c-sub);background:var(--c-sub-tint)}
+.card .no{font-size:21px;font-weight:700;color:var(--c-emph);margin-bottom:16px}
+.card .t{font-size:30px;font-weight:600;color:var(--text);line-height:1.35;margin-bottom:16px}
+.card .d{font-size:24px;color:var(--text-soft);line-height:1.6}
+
+/* ---------- 리스트 ---------- */
+.mlist{list-style:none;display:flex;flex-direction:column;gap:4px}
+.mlist li{font-size:27px;line-height:1.5;color:var(--text-soft);padding:18px 0;
+          display:flex;gap:18px;align-items:flex-start;border-bottom:2px solid var(--line)}
+.mlist li:last-child{border-bottom:0}
+.mlist li::before{content:"";flex:0 0 auto;width:10px;height:10px;border-radius:50%;
+                  background:var(--c-sub);margin-top:14px}
+.mlist.plain li{border-bottom:0;padding:12px 0}
+
+/* ---------- 비교표 ---------- */
+.ctable{width:100%;border-collapse:separate;border-spacing:0 12px}
+.ctable th{font-size:22px;font-weight:700;color:var(--on-main);background:var(--c-main);
+           padding:20px 28px;text-align:left}
+.ctable th:first-child{border-radius:var(--r-sm) 0 0 var(--r-sm);background:var(--c-sub);color:var(--on-sub)}
+.ctable th:last-child{border-radius:0 var(--r-sm) var(--r-sm) 0}
+.ctable td{font-size:24px;color:var(--text-soft);background:var(--panel);padding:22px 28px;line-height:1.45}
+.ctable td:first-child{border-radius:var(--r-sm) 0 0 var(--r-sm);font-weight:600;color:var(--text)}
+.ctable td:last-child{border-radius:0 var(--r-sm) var(--r-sm) 0}
+
+/* ---------- 단계 ---------- */
+.steps{display:flex;align-items:flex-start;justify-content:space-between;position:relative}
+.steps::before{content:"";position:absolute;top:48px;left:10%;right:10%;
+               border-top:3px dashed var(--line);z-index:0}
+.step{position:relative;z-index:1;width:22%;text-align:center}
+.step .dot{width:96px;height:96px;border-radius:var(--r);background:var(--c-sub);color:var(--on-sub);
+           font-size:36px;font-weight:700;display:flex;align-items:center;justify-content:center;
+           margin:0 auto;box-shadow:0 0 0 14px var(--c-sub-tint)}
+.step .t{font-size:26px;font-weight:600;color:var(--text);margin-top:26px}
+.step .d{font-size:21px;color:var(--text-soft);line-height:1.5;margin-top:12px}
+
+/* ---------- 강조 · 주의 ---------- */
+.callout{border-radius:var(--r);padding:34px 40px;display:flex;gap:24px;align-items:flex-start;
+         background:var(--panel)}
+.callout .ic{flex:0 0 auto;width:52px;height:52px;border-radius:16px;display:flex;
+             align-items:center;justify-content:center;font-size:26px;font-weight:700;
+             background:var(--c-main);color:var(--on-main)}
+.callout .tx{font-size:27px;line-height:1.55;color:var(--text)}
+.callout .tx .h{display:block;font-weight:700;margin-bottom:8px;color:var(--c-emph)}
+/* 색조가 없는 팔레트에서는 옅은 틴트만으로 "주의"가 읽히지 않는다.
+   테두리 대신 왼쪽에 강조색 면을 세워, 뒷자리에서도 덩어리로 구분되게 한다. */
+.callout.warn{background:var(--c-accent-tint);box-shadow:inset 10px 0 0 var(--c-accent);
+              padding-left:56px}
+/* 단계 흐름과 그 아래 콜아웃은 성격이 다른 블록이라 간격을 벌린다 */
+.steps + .callout{margin-top:32px}
+.callout.warn .ic{background:var(--c-accent);color:var(--on-accent)}
+
+/* ---------- 차트 (축·그리드라인 없이 값 직접 표기) ---------- */
+.chart{display:flex;flex-direction:column;gap:0;flex:1;min-height:0}
+.chart .h{font-size:24px;font-weight:600;color:var(--text-soft);margin-bottom:28px}
+.chart .bars{flex:1;display:flex;align-items:flex-end;gap:40px;padding:0 8px}
+.chart .bar{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%}
+.chart .bar .v{font-size:26px;font-weight:700;color:var(--text);margin-bottom:10px}
+.chart .bar i{display:block;width:100%;max-width:168px;border-radius:10px 10px 0 0;background:var(--c-main)}
+.chart .bar.hi i{background:var(--c-chart-hi)}
+.chart .bar .k{font-size:20px;color:var(--text-faint);margin-top:16px}
+
+/* ---------- 출처 표기 — 기본 좌하단, 로고가 좌하단이면 우하단으로 자동 이동 ----------
+   .credit : 사진 한 줄 출처
+   .cite   : 논문·통계·인용문 출처 (여러 줄, 본문의 .ref 번호와 짝을 맞춘다) */
+.credit,.cite{position:absolute;left:120px;right:120px;bottom:74px;
+              font-size:17px;line-height:1.5;color:var(--text-faint)}
+.cite{display:flex;flex-direction:column;gap:3px}
+.cite span{display:block}
+.cite b{color:var(--text-soft);font-weight:600}
+.slide:has(.credit) .body-main,.slide:has(.cite) .body-main{margin-bottom:40px}
+body.credit-flip .credit,body.credit-flip .cite{left:120px;right:120px;text-align:right}
+/* 표지·마무리는 좌하단에 발표자·일시가 있으므로 출처를 오른쪽으로 보낸다.
+   글자색도 어두운 배경에 맞춰 밝게 바꾼다(안 그러면 안 보인다). */
+.slide.cover .credit,.slide.cover .cite{
+  left:120px;right:120px;text-align:right;bottom:86px;
+  color:var(--on-main);opacity:.72}
+.slide.closing .credit,.slide.closing .cite{
+  left:120px;right:120px;text-align:right;bottom:86px;
+  color:var(--on-sub);opacity:.72}
+/* 로고가 오른쪽 아래면 출처를 그 위로 올린다 */
+#stage[data-logo="br"] .slide.cover .credit,#stage[data-logo="br"] .slide.cover .cite,
+#stage[data-logo="br"] .slide.closing .credit,#stage[data-logo="br"] .slide.closing .cite{bottom:132px}
+/* 표지·마무리에는 꼬리말이 없으므로 본문 아래 여백을 따로 벌리지 않는다 */
+.slide.cover:has(.credit) .body-main,.slide.closing:has(.credit) .body-main{margin-bottom:0}
+/* 표지 사진의 출처는 표지가 아니라 '목차'에 아주 작게 모아 적는다.
+   표지 왼쪽 아래에는 발표자·일시가 있어 출처와 겹치기 때문이다. */
+.credit-mini{position:absolute;left:120px;right:120px;bottom:40px;
+             font-size:13px;line-height:1.45;color:var(--text-faint);opacity:.62;
+             display:flex;flex-direction:column;gap:1px;z-index:2}
+.credit-mini span{display:block}
+body.credit-flip .credit-mini{text-align:right}
+/* 본문에서 인용한 자리에 붙이는 각주 번호 */
+.ref{font-size:.5em;vertical-align:super;line-height:0;font-weight:700;
+     color:var(--c-main-text);margin-left:2px}
+
+/* ---------- 로고 — data-logo="tl|tr|bl|br" (#stage에 지정, 기본 br) ---------- */
+.logo{position:absolute;height:40px;z-index:5;opacity:.92}
+#stage[data-logo="br"] .logo,#stage:not([data-logo]) .logo{right:120px;bottom:38px}
+#stage[data-logo="bl"] .logo{left:120px;bottom:38px}
+#stage[data-logo="tr"] .logo{right:120px;top:56px}
+#stage[data-logo="tl"] .logo{left:120px;top:56px}
+.slide.cover .logo,.slide.closing .logo{filter:brightness(0) invert(1);opacity:.95}
+
+/* ---------- 꼬리말 / 진행바 / 목차 오버레이 ---------- */
+.foot{position:absolute;left:120px;right:120px;bottom:38px;display:flex;align-items:center;
+      gap:16px;font-size:18px;color:var(--text-faint);font-weight:500}
+.foot .ch{color:var(--text-soft);font-weight:600}
+.foot .pg{margin-left:auto;font-variant-numeric:tabular-nums}
+.toc .foot,.cover .foot,.closing .foot{display:none}
+#progress{position:fixed;left:0;bottom:0;height:5px;width:100%;background:rgba(255,255,255,.08);z-index:20}
+#progress i{display:block;height:100%;width:0;background:var(--c-main);transition:width .28s ease}
+#hint{position:fixed;left:20px;bottom:14px;z-index:20;font-size:13px;color:rgba(255,255,255,.4);
+      transition:opacity .6s ease;pointer-events:none}
+/* 목차 열기 버튼 — O 키 대신 이걸로 연다 */
+#tocbtn{position:fixed;right:18px;bottom:12px;z-index:25;width:38px;height:38px;
+        border:0;border-radius:10px;cursor:pointer;font-size:17px;line-height:1;
+        background:rgba(255,255,255,.14);color:rgba(255,255,255,.72);
+        transition:background .2s ease,color .2s ease}
+#tocbtn:hover{background:rgba(255,255,255,.28);color:#fff}
+html.editing #tocbtn{display:none}
+@media print{ #tocbtn{display:none!important} }
+/* 목차 — 버튼에 붙는 드롭다운 */
+#jump{position:fixed;right:18px;bottom:58px;z-index:30;display:none;
+      width:400px;max-height:58vh;overflow-y:auto;
+      background:#16181d;border-radius:12px;padding:8px;
+      box-shadow:0 16px 44px rgba(0,0,0,.55)}
+#jump.open{display:block}
+#jump h4{color:#8b919c;font-size:12px;font-weight:700;letter-spacing:.04em;
+         text-transform:uppercase;margin:8px 10px 8px}
+#jump ol{list-style:none}
+#jump li{color:#c8cdd6;font-size:14px;padding:9px 11px;border-radius:8px;cursor:pointer;
+         display:flex;gap:10px;align-items:baseline;line-height:1.4}
+#jump li:hover{background:rgba(255,255,255,.10);color:#fff}
+#jump li b{color:#8b919c;font-weight:600;min-width:22px;font-variant-numeric:tabular-nums}
+#jump li span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#jump li.cur{background:#3b6fd4;color:#fff}
+#jump li.cur b{color:rgba(255,255,255,.75)}
+
+/* ---------- 단계 공개 (누르면 하나씩 나타남) ---------- */
+.step-in{opacity:0;transform:translateY(14px);transition:opacity .32s ease,transform .32s ease}
+.step-in.shown{opacity:1;transform:none}
+
+
+/* ==========================================================================
+   편집기 (E 키로 켠다) — 발표 화면에는 아무 영향이 없다.
+   인쇄와 스크린샷에서는 통째로 빠진다.
+   ========================================================================== */
+#editor{position:fixed;top:0;right:0;bottom:0;width:352px;z-index:40;display:none;
+        background:#16181d;color:#e8eaee;overflow-y:auto;
+        font-family:var(--font);font-size:14px;line-height:1.5;
+        box-shadow:-8px 0 30px rgba(0,0,0,.4)}
+html.editing #editor{display:block}
+html.editing #deck{right:352px;bottom:34px}
+#editor h4{font-size:12px;font-weight:700;letter-spacing:.06em;color:#8b919c;
+           text-transform:uppercase;margin:0;padding:20px 22px 10px;
+           border-top:1px solid #24272e}
+#editor section:first-child h4{border-top:0}
+#editor .grp{padding:0 22px 18px}
+#editor label{display:flex;align-items:center;gap:10px;margin-bottom:8px;color:#c6cad2}
+#editor label span{flex:1}
+#editor input[type=color]{width:44px;height:30px;padding:0;border:1px solid #343842;
+                          border-radius:6px;background:#0f1115;cursor:pointer}
+/* 색 고정 — 켜 두면 밑색·프리셋을 바꿔도 그 색만 그대로 남는다 (요구사항 명세 7-3) */
+#editor .lock{flex:0 0 auto;padding:4px 9px;font-size:11px;border-radius:6px;
+              border:1px solid #343842;background:#1f232a;color:#8b919c;cursor:pointer}
+#editor .lock:hover{color:#c6cad2;border-color:#4a505c}
+#editor .lock.on{background:#3b6fd4;border-color:#3b6fd4;color:#fff}
+#editor input[type=text]{width:100%;padding:9px 10px;border:1px solid #343842;border-radius:8px;
+                         background:#1f232a;color:#e8eaee;font-family:inherit;font-size:13px}
+#editor input[type=range]{accent-color:#3b6fd4;height:22px}
+#editor .row{display:flex;gap:8px;flex-wrap:wrap}
+#editor button{flex:1;min-width:0;padding:9px 10px;border:1px solid #343842;border-radius:8px;
+               background:#1f232a;color:#e8eaee;font-size:13px;font-family:inherit;cursor:pointer}
+#editor button:hover{background:#2a2f38;border-color:#454b57}
+/* 사진 자리 다섯 개(자동·배경·왼쪽·오른쪽·자유)가 한 줄에 들어가도록 좁게 쓴다.
+   기본 여백이면 '오른쪽'이 두 줄로 접힌다. */
+#editor [data-place]{padding:9px 4px;font-size:12px;white-space:nowrap}
+#editor button.on{background:#3b6fd4;border-color:#3b6fd4;color:#fff}
+#editor button.primary{background:#2f7d4f;border-color:#2f7d4f;color:#fff;font-weight:700}
+#editor button.primary:hover{background:#379059}
+#editor button.danger:hover{background:#7a2b2b;border-color:#7a2b2b}
+#editor .note-s{font-size:12px;color:#767d89;margin-top:8px;line-height:1.5}
+/* 슬라이드용 강조색(어두운 글자)이 어두운 패널에 적용돼 안 보이던 것을 막는다 */
+#editor .note-s b,#editor .msg b,#editbar b{color:#e8eaee}
+#editor .warnbox{margin-top:10px;padding:10px 12px;border-radius:8px;font-size:12px;
+                 background:#3a2a12;color:#ffcf8a;line-height:1.55;display:none}
+#editor .warnbox.show{display:block}
+#editor .okbox{margin-top:10px;padding:10px 12px;border-radius:8px;font-size:12px;
+               background:#14301f;color:#8fe0ae;display:none}
+#editor .okbox.show{display:block}
+
+/* 색 견본 */
+#editor .sw{display:flex;flex-wrap:wrap;gap:5px;margin:-2px 0 12px 0}
+#editor .sw b{width:24px;height:24px;border-radius:5px;cursor:pointer;
+              border:1px solid rgba(255,255,255,.16);box-sizing:border-box}
+#editor .sw b:hover{outline:2px solid #fff;outline-offset:1px}
+#editor .ramp{display:flex;gap:0;margin:-2px 0 14px 0;border-radius:7px;overflow:hidden}
+#editor .ramp b{flex:1;height:30px;cursor:pointer;position:relative;
+                display:flex;align-items:flex-end;justify-content:center;
+                font-size:8px;font-weight:600;padding-bottom:2px;line-height:1}
+#editor .ramp b:hover{outline:2px solid #fff;outline-offset:-2px;z-index:1}
+#editor .ramp b.on{outline:2px solid #fff;outline-offset:-2px;z-index:1}
+/* 밑색이 단계 사이 색이라 딱 맞는 칸이 없을 때 — '이 근처'라는 뜻으로 점선 */
+#editor .ramp b.on.near{outline:2px dashed rgba(255,255,255,.8)}
+#editor .drop{border:2px dashed #3a3f49;border-radius:10px;padding:18px 12px;text-align:center;
+              color:#8b919c;font-size:13px;cursor:pointer;transition:all .15s ease}
+#editor .drop:hover,#editor .drop.on{border-color:#3b6fd4;background:rgba(59,111,212,.10);color:#c6cad2}
+#editor .photos{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:10px}
+#editor .photos img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:6px;cursor:pointer;
+                    border:2px solid transparent}
+#editor .photos img:hover{border-color:#3b6fd4}
+#editor .msg{font-size:12px;color:#8b919c;margin-top:8px;line-height:1.5}
+#editor .preset{display:flex;gap:8px;flex-wrap:wrap}
+#editor .preset button{flex:0 0 calc(50% - 4px);display:flex;align-items:center;gap:7px;
+                       justify-content:flex-start;padding:8px 10px}
+#editor .preset i{display:flex;gap:2px}
+#editor .preset i em{width:11px;height:11px;border-radius:3px;
+                     border:1px solid rgba(255,255,255,.15)}
+
+/* 슬라이드 목록 */
+#editor .slist{display:flex;flex-direction:column;gap:2px;max-height:238px;overflow-y:auto;
+               margin-bottom:12px;padding-right:2px}
+#editor .slist a{display:flex;gap:9px;align-items:baseline;padding:7px 9px;border-radius:7px;
+                 color:#b9bec7;text-decoration:none;cursor:pointer;font-size:13px}
+#editor .slist a:hover{background:#22262d;color:#fff}
+#editor .slist a.cur{background:#3b6fd4;color:#fff}
+#editor .slist a u{text-decoration:none;opacity:.65;min-width:20px;font-variant-numeric:tabular-nums}
+#editor .slist a{user-select:none}
+#editor .slist a.drag{opacity:.4}
+#editor .slist a.over{box-shadow:inset 0 2px 0 #3b6fd4}
+#editor .slist a.over-b{box-shadow:inset 0 -2px 0 #3b6fd4}
+#editor .slist a s{text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+#editbar{position:fixed;left:0;bottom:0;height:34px;right:352px;z-index:40;display:none;
+         align-items:center;gap:14px;padding:0 18px;background:#16181d;color:#9aa1ac;
+         font-family:var(--font);font-size:12px;border-top:1px solid #24272e}
+html.editing #editbar{display:flex}
+#editbar b{color:#e8eaee;font-weight:600}
+
+/* 편집 중인 요소 표시 */
+html.editing [contenteditable]{outline:1px dashed rgba(59,111,212,.45);outline-offset:3px;
+                               border-radius:3px;cursor:text}
+html.editing [contenteditable]:hover{outline-color:rgba(59,111,212,.9);
+                                     background:rgba(59,111,212,.06)}
+html.editing [contenteditable]:focus{outline:2px solid #3b6fd4;outline-offset:3px;
+                                     background:rgba(59,111,212,.10)}
+/* 글자 상자를 '골라' 둔 상태 — 커서를 넣지 않고 상자 자체를 다루는 중이다 (요구사항 명세 8-1, 8-5) */
+html.editing .boxsel{outline:2px solid #2f7d4f!important;outline-offset:3px;
+                     background:rgba(47,125,79,.10);cursor:move}
+/* 글자 상자 크기 손잡이. 상자 안에 넣으면 편집 내용에 섞이므로 무대 위에 따로 띄운다. */
+#tbox-hd{position:absolute;width:16px;height:16px;margin:-8px 0 0 -8px;z-index:60;
+  background:#2f7d4f;border:2px solid #fff;border-radius:50%;cursor:ew-resize;display:none}
+html.editing #tbox-hd.on{display:block}
+html.editing #progress,html.editing #hint{display:none}
+
+@media print{ #editor,#editbar{display:none!important}
+              [contenteditable]{outline:0!important;background:none!important} }
+
+/* ---------- 인쇄(PDF): 슬라이드 = 1페이지 ---------- */
+@media print{
+  /* @page size 에 px 를 쓰면 브라우저가 무시하고 Letter/A4 로 인쇄한다.
+     1920x1080px 은 96dpi 기준 20in x 11.25in 이다. in 단위로 적어야 16:9 로 나온다. */
+  @page{size:20in 11.25in;margin:0}
+  html,body{overflow:visible;background:#fff;height:auto}
+  #deck{position:static;display:block}
+  #stage{width:1920px;height:auto;transform:none!important;box-shadow:none;border-radius:0}
+  .slide{position:relative;inset:auto;width:1920px;height:1080px;
+         display:flex!important;animation:none;break-after:page;page-break-after:always}
+  .slide:last-child{break-after:auto;page-break-after:auto}
+  .step-in{opacity:1!important;transform:none!important}
+  #progress,#hint,#jump{display:none!important}
+}
+</style>
+</head>
+<body>
+<div id="deck"><div id="stage" data-logo="br">
+
+<!-- 1. 표지 -->
+<section class="slide cover">
+  <div class="cover-bar"></div>
+  <div class="course">AI 취업역량강화 과정 · 과제 발표</div>
+  <h1>발표 자료를<br>파일 하나로 끝내기</h1>
+  <p class="lead">PPTX의 폰트 깨짐을 없앤 단일 HTML 슬라이드 스킬 제작기</p>
+  <div class="meta">
+    <span class="who">Slides-in-Html</span>
+    <span>2026.08.27</span>
+    <span>예시 자료</span>
+  </div>
+</section>
+
+<!-- 2. 목차 -->
+<section class="slide toc">
+  <div class="toc-title">
+    <div class="eyebrow">agenda</div>
+    <h1>목차</h1>
+  </div>
+  <div class="agenda">
+    <div class="ag now"><div class="n">1</div><div class="t">왜 PPTX를 안 쓰나</div><div class="d">3분</div></div>
+    <div class="ag"><div class="n">2</div><div class="t">무엇을 자동화했나</div><div class="d">6분</div></div>
+    <div class="ag"><div class="n">3</div><div class="t">만드는 순서</div><div class="d">4분</div></div>
+    
+  </div>
+</section>
+
+<!-- 3. 본론 — 좌우 2단 (기본 레이아웃) -->
+<section class="slide">
+  <div class="shead">
+    <div class="eyebrow">01 · 왜 PPTX를 안 쓰나</div>
+    <h2>폰트가 깨지는 자리는 늘 남의 컴퓨터다</h2>
+    <div class="sub">내 화면에서 멀쩡하던 자료가 발표장 노트북에서 무너진다</div>
+  </div>
+  <div class="body-main center">
+    <div class="two">
+      <div class="panel">
+        <div class="h">PPTX로 만들면</div>
+        <p>폰트를 파일에 심어도 뷰어·OS에 따라 대체된다. 줄이 밀리고 글상자가 넘친다.
+        고칠 수 있는 건 <b>내 컴퓨터에서뿐</b>이라 현장에서는 손을 못 쓴다.</p>
+      </div>
+      <div class="panel">
+        <div class="h">HTML 한 장으로 만들면</div>
+        <p>폰트를 CSS에 직접 걸어 두면 브라우저가 그대로 받아 그린다. 화면 크기에 맞춰 축소된다.
+        <b>해상도가 달라져도 배치는 그대로다.</b></p>
+      </div>
+    </div>
+  </div>
+  <div class="foot" data-chapter="왜 PPTX를 안 쓰나"></div>
+</section>
+
+<!-- 4. 개념 한 문장 (.message) — 2단 예외 -->
+<section class="slide">
+  <div class="shead">
+    <div class="eyebrow">02 · 무엇을 자동화했나</div>
+    <h2>이 스킬을 한 문장으로</h2>
+  </div>
+  <div class="body-main center">
+    <div class="message">디자인 규칙을 문서로 적어 두는 대신,<br><em>지켰는지 기계가 검사하게</em> 만들었다.</div>
+  </div>
+  <div class="foot" data-chapter="무엇을 자동화했나"></div>
+</section>
+
+<!-- 5. 차트 -->
+<section class="slide">
+  <div class="shead">
+    <div class="eyebrow">02 · 무엇을 자동화했나</div>
+    <h2>눈으로는 못 잡던 것이 잡혔다</h2>
+    <div class="sub">브랜드 색을 그대로 쓴 막대와 보정한 막대 — 색이 달라도 밝기가 같으면 같은 막대가 된다</div>
+  </div>
+  <div class="body-main center">
+    <div class="chart">
+      <div class="h">명도 대비 (기준 3:1 이상)</div>
+      <div class="bars">
+        <div class="bar"><div class="v">1.83</div><i style="height:49%"></i><div class="k">막대 ↔ 배경 (개선 전)</div></div>
+        <div class="bar"><div class="v">2.46</div><i style="height:65%"></i><div class="k">막대 ↔ 막대 (개선 전)</div></div>
+        <div class="bar hi"><div class="v">3.08</div><i style="height:82%"></i><div class="k">막대 ↔ 막대 (개선 후)</div></div>
+      </div>
+    </div>
+  </div>
+  <div class="foot" data-chapter="무엇을 자동화했나"></div>
+</section>
+
+<!-- 6. 큰 수치 (.bignums) — 2단 예외 -->
+<section class="slide">
+  <div class="shead">
+    <div class="eyebrow">02 · 무엇을 자동화했나</div>
+    <h2>숫자로 보면</h2>
+  </div>
+  <div class="body-main center">
+    <div class="bignums panels" style="--n:3">
+      <div class="bignum"><div class="v">1<span class="u">개</span></div><div class="k">전달되는 파일 — 첨부도 링크도 없다</div></div>
+      <div class="bignum"><div class="v">7<span class="u">종</span></div><div class="k">자동 검사 항목 — 넘침·오류·글자대비·막대대비·잘림·비례·출처</div></div>
+      <div class="bignum"><div class="v">15<span class="u">종</span></div><div class="k">미리 만들어 둔 슬라이드 유형</div></div>
+    </div>
+  </div>
+  <div class="foot" data-chapter="무엇을 자동화했나"></div>
+</section>
+
+<!-- 7. 인용구 (.quote) — 2단 예외 -->
+<section class="slide">
+  <div class="shead">
+    <div class="eyebrow">02 · 무엇을 자동화했나</div>
+    <h2>규칙 하나가 판단을 대신한다</h2>
+  </div>
+  <div class="body-main center">
+    <div class="quote">
+      <blockquote>로고가 없어서 브랜드 색을 모르면,<br>색을 지어내지 말고 무채색으로 만든다.<span class="ref">1</span></blockquote>
+      <div class="who"><b>색 규칙</b> · 되묻지 않고 바로 진행하기 위해 미리 정해 둔 기본값</div>
+    </div>
+  </div>
+  <div class="cite">
+    <span><b>1</b> Slides-in-Html 스타일 가이드, 2-1 「브랜드 색을 모르면 무채색으로 만든다」, 2026.</span>
+  </div>
+  <div class="foot" data-chapter="무엇을 자동화했나"></div>
+</section>
+
+<!-- 8. 사진 1장 (.photo-hero) — 2단 예외 -->
+<section class="slide">
+  <div class="shead">
+    <div class="eyebrow">02 · 무엇을 자동화했나</div>
+    <h2>만들고 나면 이 화면을 본다</h2>
+    <div class="sub">일곱 가지가 모두 빈 배열이어야 내보낸다</div>
+  </div>
+  <div class="body-main">
+    <div class="photo-hero fit">
+      <img src="data:image/jpeg;base64,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AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP/Z" alt="check.mjs 실행 결과 — 네 가지 검사 항목이 모두 통과한 터미널 화면">
+    </div>
+  </div>
+  <div class="credit">직접 실행한 검사 결과 화면</div>
+  <div class="foot" data-chapter="무엇을 자동화했나"></div>
+</section>
+
+<!-- 9. 단계 (.steps) + 주의 콜아웃 -->
+<section class="slide">
+  <div class="shead">
+    <div class="eyebrow">03 · 만드는 순서</div>
+    <h2>네 단계로 끝난다</h2>
+  </div>
+  <div class="body-main center">
+    <div class="steps">
+      <div class="step"><div class="dot">1</div><div class="t">내용 확정</div><div class="d">발표 대본·보고서를<br>먼저 읽는다</div></div>
+      <div class="step"><div class="dot">2</div><div class="t">색 결정</div><div class="d">로고 있으면 팔레트 생성<br>없으면 무채색</div></div>
+      <div class="step"><div class="dot">3</div><div class="t">슬라이드 배치</div><div class="d">2단이 기본<br>예외 4가지만 1단</div></div>
+      <div class="step"><div class="dot">4</div><div class="t">자동 검증</div><div class="d">넷 다 통과해야<br>내보낸다</div></div>
+    </div>
+    <div class="callout warn step-in">
+      <div class="ic">!</div>
+      <div class="tx"><span class="h">2단계에서 자주 하는 실수</span>
+        브랜드 색 세 개만 손으로 바꾸면 글자 대비와 차트 강조색이 함께 깨집니다.
+        반드시 팔레트 생성 스크립트가 만든 블록을 통째로 갈아 끼웁니다.</div>
+    </div>
+  </div>
+  <div class="foot" data-chapter="만드는 순서"></div>
+</section>
+
+<!-- 10. 마무리 -->
+<section class="slide closing">
+  <h2>여기까지입니다</h2>
+  <div class="sub">궁금한 점은 편하게 물어봐 주세요</div>
+</section>
+
+</div></div>
+<div id="progress"><i></i></div>
+<div id="hint">← → 이동 · 오른쪽 아래 ▦ 목차 · F 전체화면 · P 인쇄(PDF) · E 편집</div>
+<button id="tocbtn" title="슬라이드 목록" aria-label="슬라이드 목록 열기">▦</button>
+<div id="jump"><h4>슬라이드 목록</h4><ol></ol></div>
+<script>
+/* ==========================================================================
+   Slides-in-Html 엔진 — 여기부터 아래는 건드리지 않는다.
+   ========================================================================== */
+
+/* ===== 1. 로고 위치에 따라 사진 출처(.credit) 자동으로 반대쪽 이동 ===== */
+(function(){
+  const stage = document.getElementById('stage');
+  const pos = stage.getAttribute('data-logo') || 'br';
+  if(pos === 'bl') document.body.classList.add('credit-flip');
+})();
+
+/* ===== 2~3. 꼬리말 · 목차 오버레이 (슬라이드가 바뀌면 rebuildDeck 으로 다시 만든다) ===== */
+let slides = [];
+const jump = document.getElementById('jump');
+const jol  = jump.querySelector('ol');
+
+/* 슬라이드를 목록에서 부를 이름. 표지·목차·마무리는 고정 이름을 쓴다. */
+function slideLabel(s){
+  if(s.classList.contains('cover'))   return '메인';
+  if(s.classList.contains('toc'))     return '목차';
+  if(s.classList.contains('closing')) return '마무리';
+  const t = (s.querySelector('h1,h2') || {}).textContent || '(제목 없음)';
+  return t.replace(/\s+/g,' ').trim();
+}
+
+function rebuildDeck(){
+  const DOC = document.title;
+  slides = Array.from(document.querySelectorAll('.slide'));
+
+  slides.forEach((s,i)=>{
+    const f = s.querySelector('.foot');
+    if(!f) return;
+    f.innerHTML = "<span>" + DOC + "</span><span class='ch'>" + (f.dataset.chapter||'') +
+                  "</span><span class='pg'>" + (i+1) + " / " + slides.length + "</span>";
+  });
+
+  jol.innerHTML = '';
+  slides.forEach((s,i)=>{
+    const li = document.createElement('li');
+    li.innerHTML = "<b>" + (i+1) + "</b><span></span>";
+    li.querySelector('span').textContent = slideLabel(s);
+    li.onclick = () => { show(i); toggleJump(false); };
+    jol.appendChild(li);
+  });
+}
+rebuildDeck();
+function toggleJump(force){
+  const openNow = (force === undefined) ? !jump.classList.contains('open') : force;
+  jump.classList.toggle('open', openNow);
+  if(openNow) [...jol.children].forEach((li,i)=>li.classList.toggle('cur', i===current));
+}
+
+/* ===== 4. 네비게이션 (슬라이드 안 단계 공개 -> 다음 슬라이드) ===== */
+let current = 0, step = 0;
+const bar = document.querySelector('#progress i');
+
+function stepsOf(i){ return Array.from(slides[i].querySelectorAll('.step-in')); }
+
+function render(){
+  slides.forEach((s,i)=>s.classList.toggle('active', i===current));
+  stepsOf(current).forEach((el,i)=>el.classList.toggle('shown', i < step));
+  bar.style.width = ((current+1)/slides.length*100) + '%';
+}
+function show(i, atEnd){
+  current = Math.max(0, Math.min(slides.length-1, i));
+  step = atEnd ? stepsOf(current).length : 0;
+  render();
+}
+function next(){
+  if(step < stepsOf(current).length){ step++; render(); return; }
+  if(current < slides.length-1) show(current+1);
+}
+function prev(){
+  if(step > 0){ step--; render(); return; }
+  if(current > 0) show(current-1, true);
+}
+addEventListener('keydown', e=>{
+  const k = e.key;
+  /* 편집 모드에서는 방향키·스페이스가 글자 입력이다. 네비게이션을 넘기지 않는다.
+     (E 키만 편집기 쪽에서 따로 처리한다) */
+  if(document.documentElement.classList.contains('editing')) return;
+  if(jump.classList.contains('open') && k==='Escape'){ toggleJump(false); return; }
+  if(['ArrowRight','PageDown',' ','Enter'].includes(k)){ e.preventDefault(); next(); }
+  else if(['ArrowLeft','PageUp','Backspace'].includes(k)){ e.preventDefault(); prev(); }
+  else if(k==='Home') show(0);
+  else if(k==='End') show(slides.length-1, true);
+  else if(k.toLowerCase()==='f'){
+    document.fullscreenElement ? document.exitFullscreen && document.exitFullscreen()
+                               : document.documentElement.requestFullscreen && document.documentElement.requestFullscreen();
+  }
+  else if(k.toLowerCase()==='p'){ e.preventDefault(); window.print(); }
+});
+document.getElementById('deck').addEventListener('click', e=>{
+  if(document.documentElement.classList.contains('editing')){
+    /* 사진을 끌고 나면 click 은 사진이 아니라 '누른 곳과 뗀 곳의 공통 조상'(= 슬라이드)에서 뜬다.
+       그래서 예전에는 끌자마자 선택이 풀려 크기 손잡이가 사라졌다. 끌었으면 여기서 건너뛴다. */
+    if(window._photoDrag){ window._photoDrag = false; return; }
+    if(!e.target.closest('.float-img,.photo-hero,.bg-photo'))
+      document.querySelectorAll('.sel').forEach(x=>x.classList.remove('sel'));
+    return;
+  }
+  if(jump.classList.contains('open')) return;
+  (e.clientX < innerWidth/3) ? prev() : next();
+});
+document.getElementById('tocbtn').addEventListener('click', e=>{ e.stopPropagation(); toggleJump(); });
+/* 드롭다운 바깥을 누르면 닫는다 */
+addEventListener('click', e=>{
+  if(!jump.classList.contains('open')) return;
+  if(jump.contains(e.target) || e.target.closest('#tocbtn')) return;
+  toggleJump(false);
+});
+
+/* ===== 5. 무대 스케일 ===== */
+const stage = document.getElementById('stage');
+const deckEl = document.getElementById('deck');
+/* 창이 아니라 #deck 의 실제 크기로 잰다. 편집기 패널이 열려 무대 영역이 좁아져도
+   16:9 를 유지한 채 그 안에 딱 맞게 들어간다. */
+const fit = () => {
+  const r = deckEl.getBoundingClientRect();
+  const k = Math.min(r.width/1920, r.height/1080);
+  stage.style.transform = 'scale(' + (k > 0 ? k : 1) + ')';
+};
+addEventListener('resize', fit); fit();
+
+/* ===== 6. 인쇄 시에는 모든 단계를 펼친다 ===== */
+addEventListener('beforeprint', ()=>{
+  slides.forEach(s=>s.querySelectorAll('.step-in').forEach(el=>el.classList.add('shown')));
+});
+
+/* ===== 7. 조작 안내는 잠시 뒤 사라진다 ===== */
+const hintEl = document.getElementById('hint');
+let hintTimer;
+function pokeHint(){
+  hintEl.style.opacity = '1';
+  clearTimeout(hintTimer);
+  hintTimer = setTimeout(()=>{ hintEl.style.opacity = '0'; }, 3500);
+}
+addEventListener('mousemove', pokeHint);
+addEventListener('keydown', pokeHint);
+pokeHint();
+
+show(0);
+
+/* ==========================================================================
+   편집기 — E 키로 켜고 끈다. 엔진과 분리되어 있어 지워도 발표는 그대로 된다.
+   저장은 "편집한 내용을 담은 새 파일 내려받기"다 (열려 있는 파일을 덮어쓰지 않는다).
+   ========================================================================== */
+(function(){
+
+/* ---------- 색 계산 (palette.mjs 와 같은 규칙을 브라우저에서 다시 쓴다) ---------- */
+const LIGHT = { bg:'#ffffff', panel:'#f4f6fa', text:'#121314' };
+const DARK  = { bg:'#101114', panel:'#1b1d22', text:'#f2f3f5' };
+const JUMPBG = '#0a0d14';
+
+const cl = (v,a,b)=>Math.min(b,Math.max(a,v));
+function h2r(h){h=h.replace('#','');if(h.length===3)h=h.split('').map(c=>c+c).join('');
+  return [parseInt(h.slice(0,2),16),parseInt(h.slice(2,4),16),parseInt(h.slice(4,6),16)];}
+function r2h(a){return '#'+a.map(v=>Math.round(cl(v,0,255)).toString(16).padStart(2,'0')).join('');}
+function r2hsl([r,g,b]){r/=255;g/=255;b/=255;const mx=Math.max(r,g,b),mn=Math.min(r,g,b);
+  const l=(mx+mn)/2;let h=0,s=0;if(mx!==mn){const d=mx-mn;s=l>0.5?d/(2-mx-mn):d/(mx+mn);
+  if(mx===r)h=((g-b)/d+(g<b?6:0));else if(mx===g)h=((b-r)/d+2);else h=((r-g)/d+4);h/=6;}
+  return [h*360,s*100,l*100];}
+function hsl2r([h,s,l]){h=((h%360)+360)%360/360;s=cl(s,0,100)/100;l=cl(l,0,100)/100;
+  if(s===0){const v=l*255;return[v,v,v];}
+  const q=l<0.5?l*(1+s):l+s-l*s,p=2*l-q;
+  const f=t=>{t=(t+1)%1;if(t<1/6)return p+(q-p)*6*t;if(t<1/2)return q;
+    if(t<2/3)return p+(q-p)*(2/3-t)*6;return p;};
+  return [f(h+1/3)*255,f(h)*255,f(h-1/3)*255];}
+function lum([r,g,b]){const a=[r,g,b].map(v=>{v/=255;
+  return v<=0.03928?v/12.92:Math.pow((v+0.055)/1.055,2.4);});
+  return 0.2126*a[0]+0.7152*a[1]+0.0722*a[2];}
+function ct(a,b){const l1=lum(typeof a==='string'?h2r(a):a)+0.05,
+  l2=lum(typeof b==='string'?h2r(b):b)+0.05;return l1>l2?l1/l2:l2/l1;}
+function mix(a,b,t){const A=h2r(a),B=h2r(b);return r2h([0,1,2].map(i=>A[i]+(B[i]-A[i])*t));}
+function toCt(hex,bg,target,dir){const [h,s,l0]=r2hsl(h2r(hex));
+  if(ct(hex,bg)>=target)return hex;
+  const step=dir==='darker'?-1:1;let best=hex,bx=ct(hex,bg);
+  for(let l=l0+step;l>=0&&l<=100;l+=step){const c=r2h(hsl2r([h,s,l]));const r=ct(c,bg);
+    if(r>bx){best=c;bx=r;} if(r>=target)return c;}
+  return best;}
+function toCtBoth(hex,a,b,target){const [h,s,l0]=r2hsl(h2r(hex));
+  const ok=c=>ct(c,a)>=target&&ct(c,b)>=target;
+  if(ok(hex))return {color:hex,found:true};
+  for(let d=1;d<=100;d++){for(const l of [l0-d,l0+d]){if(l<0||l>100)continue;
+    const c=r2h(hsl2r([h,s,l]));if(ok(c))return {color:c,found:true};}}
+  return {color:hex,found:false};}
+function onColor(bg){return ct('#ffffff',bg)>=3?'#ffffff':'#121314';}
+
+function buildPalette(main,sub,accent){
+  const warn=[];
+  const achromatic = r2hsl(h2r(main))[1] < 8;
+  const mainText = toCt(main,LIGHT.panel,6,'darker');
+  const darkText = toCt(main,DARK.panel,6,'lighter');
+  const chL = toCtBoth(accent,main,LIGHT.bg,3);
+  const chD = toCtBoth(accent,main,DARK.bg,3);
+
+  /* 가독성 점검 (요구사항 명세 8-2).
+     색마다 '실제로 그 색 위에 무슨 글자가 놓이는지'를 따져 본다.
+     고정해 둔 색이 원인이면 그렇게 알려 준다 — 밑색을 바꿔도 안 고쳐지는 색이기 때문이다. */
+  const L = (typeof locked === 'object' && locked) ? locked : {};
+  const tag = role => L[role] ? '<b>' + {main:'주조색',sub:'보조색',accent:'강조색'}[role] + '이 고정되어 있습니다.</b> ' : '';
+  const add = (role, msg) => warn.push(tag(role) + msg);
+
+  if(!chL.found) add('accent','강조색이 주조색과 밝기가 너무 비슷해 차트 막대를 구분할 수 없습니다. 강조색을 더 어둡거나 밝게 바꾸세요.');
+  const LO = 4.495;                                  /* 4.4999 를 미달로 잡지 않도록 아주 작은 여유 */
+  if(ct(onColor(main),main) < LO)
+    add('main','표지 바탕(주조색) 위 글자 대비가 ' + ct(onColor(main),main).toFixed(2) + ':1 입니다. 큰 글자만 쓰세요.');
+  if(ct(onColor(sub),sub) < LO)
+    add('sub','마무리 장 바탕(보조색) 위 글자 대비가 ' + ct(onColor(sub),sub).toFixed(2) + ':1 입니다. 큰 글자만 쓰세요.');
+  if(ct(onColor(accent),accent) < LO)
+    add('accent','강조색 위 글자 대비가 ' + ct(onColor(accent),accent).toFixed(2) + ':1 입니다.');
+  /* 형광펜(.mark)·강조 카드 배경 위에는 본문 글자가 그대로 놓인다 → 4.5:1 이 필요하다 */
+  const accTint = mix(accent,LIGHT.bg,.88), subTint = mix(sub,LIGHT.bg,.93);
+  if(ct(LIGHT.text,accTint) < LO)
+    add('accent','형광펜 배경(강조색 옅은 톤) 위 본문 글자가 ' + ct(LIGHT.text,accTint).toFixed(2) + ':1 입니다.');
+  if(ct(LIGHT.text,subTint) < LO)
+    add('sub','강조 카드 배경(보조색 옅은 톤) 위 본문 글자가 ' + ct(LIGHT.text,subTint).toFixed(2) + ':1 입니다.');
+  if(ct(mainText,LIGHT.panel) < LO)
+    add('main','패널 위 라벨 글자가 ' + ct(mainText,LIGHT.panel).toFixed(2) + ':1 까지밖에 안 나옵니다. 주조색이 너무 밝습니다.');
+  /* 색끼리 구분이 안 되면 65 / 25 / 10 의 위계가 사라진다 */
+  if(ct(main,sub) < 1.25)
+    add('sub','보조색이 주조색과 거의 같아 표지와 마무리 장이 구분되지 않습니다.');
+  if(ct(sub,accent) < 1.25)
+    add('accent','강조색이 보조색과 거의 같아 강조가 눈에 띄지 않습니다.');
+  const light = {
+    '--c-main':main, '--c-sub':sub, '--c-accent':accent,
+    '--c-main-tint':mix(main,LIGHT.bg,.90),
+    '--c-sub-tint':mix(sub,LIGHT.bg,.93),
+    '--c-accent-tint':mix(accent,LIGHT.bg,.88),
+    '--c-main-text':mainText,
+    '--c-emph': achromatic ? LIGHT.text : mainText,
+    '--c-main-ondark':toCt(main,JUMPBG,4.5,'lighter'),
+    '--c-chart-hi':chL.color,
+    '--on-main':onColor(main), '--on-sub':onColor(sub), '--on-accent':onColor(accent),
+  };
+  const dark = {
+    '--c-main-tint':mix(main,DARK.bg,.80),
+    '--c-sub-tint':mix(sub,DARK.bg,.85),
+    '--c-accent-tint':mix(accent,DARK.bg,.82),
+    '--c-main-text':darkText,
+    '--c-emph': achromatic ? DARK.text : darkText,
+    '--c-chart-hi':chD.color,
+  };
+  return {light,dark,warn};
+}
+
+/* ---------- 주조색을 고르는 밑색 (여기서 고른 뒤 쉐이드로 다듬는다) ---------- */
+const BASE_HUES = ['#6f747c','#2e6ff2','#1e3a8a','#0f6b73','#1f7a5a','#3f6212',
+                   '#8a4b16','#b45309','#7a2f3f','#a02334','#7a2f5f','#5b3a8e'];
+
+/* ---------- 쉐이드 만들기 ----------
+   Canva 의 Shade(제작자 Nafis Azizi Riza)처럼, 색 하나에서 밝기 단계를 만든다.
+   색조(H)는 그대로 두고 밝기(L)만 옮기되, 아주 밝거나 어두운 끝에서는 채도를 낮춰
+   회색으로 뜨지 않게 한다. 라벨은 Tailwind 처럼 50~900 으로 붙인다. */
+const SHADE_STOPS = [
+  {k:'50',  l:96}, {k:'100', l:91}, {k:'200', l:83}, {k:'300', l:72},
+  {k:'400', l:60}, {k:'500', l:50}, {k:'600', l:42}, {k:'700', l:34},
+  {k:'800', l:26}, {k:'900', l:17},
+];
+function shadeRamp(hex){
+  const [h,s0] = r2hsl(h2r(hex));
+  return SHADE_STOPS.map(st => {
+    const edge = Math.abs(st.l - 55) / 45;              /* 0(중간) ~ 1(양 끝) */
+    const s = cl(s0 * (1 - edge * 0.28), 0, 100);       /* 끝일수록 채도를 살짝 낮춘다 */
+    return { k: st.k, c: r2h(hsl2r([h, s, st.l])) };
+  });
+}
+const PRESETS = [
+  {n:'무채색', c:['#6f747c','#2f3238','#121417']},
+  {n:'블루',   c:['#2e6ff2','#14213d','#ffb020']},
+  {n:'네이비', c:['#1e3a8a','#0f172a','#f59e0b']},
+  {n:'그린',   c:['#1f7a5a','#14332a','#ca8a04']},
+  {n:'버건디', c:['#7a2f3f','#2b1218','#ca8a04']},
+  {n:'틸',     c:['#0f6b73','#10262a','#b45309']},
+];
+
+/* ---------- 편집 대상 ---------- */
+const EDITABLE = ['h1','h2','h3','p','.sub','.lead','.course','.eyebrow','.note',
+  '.card .t','.card .d','.card .no','.panel .h','.mlist li','.callout .tx',
+  '.ctable td','.ctable th','.bignum .v','.bignum .k','.step .t','.step .d',
+  '.ag .t','.ag .d','.ag .n','.chart .h','.chart .k','.chart .bar .v',
+  '.credit','.cite span','.quote blockquote','.quote .who','.message','.meta span','.practice .q'
+].join(',');
+
+const root = document.documentElement;
+let editing = false;
+
+/* ---------- UI ---------- */
+const swHTML = arr => '<div class="sw">' +
+  arr.map(c => '<b data-c="' + c + '" style="background:' + c + '"></b>').join('') + '</div>';
+/* 쉐이드 줄 — data-for 로 어느 색에 적용할지 지정한다 */
+const rampHTML = role => '<div class="ramp" data-for="' + role + '"></div>';
+
+const panel = document.createElement('div');
+panel.id = 'editor';
+panel.innerHTML =
+ '<section><h4>슬라이드</h4><div class="grp">' +
+   '<div class="row" style="margin-bottom:10px">' +
+     '<button id="e-undo" title="Ctrl+Z">↶ 되돌리기</button>' +
+     '<button id="e-redo" title="Ctrl+Shift+Z">↷ 다시하기</button></div>' +
+   '<div class="note-s" style="margin:0 0 8px">목록을 <b>끌어서 순서를 바꿀 수</b> 있습니다.</div>' +
+   '<div class="slist" id="e-list"></div>' +
+   '<div class="row" style="margin-bottom:8px">' +
+     '<button id="e-prev">← 이전 장</button><button id="e-next">다음 장 →</button></div>' +
+   '<div class="row" style="margin-bottom:8px">' +
+     '<button id="e-dup">복제</button><button id="e-del" class="danger">삭제</button></div>' +
+   '<div class="row">' +
+     '<button id="e-up">앞으로 옮기기</button><button id="e-down">뒤로 옮기기</button></div>' +
+ '</div></section>' +
+
+ '<section><h4>글자 강조</h4><div class="grp">' +
+   '<div class="row"><button id="e-mark">형광펜</button>' +
+     '<button id="e-bold">굵게</button><button id="e-plain">지우기</button></div>' +
+   '<div class="note-s">강조할 글자를 끌어 선택한 뒤 누릅니다. 형광펜은 강조색 틴트를 씁니다.</div>' +
+ '</div></section>' +
+
+ '<section><h4>브랜드 색</h4><div class="grp">' +
+   '<div class="preset" style="margin-bottom:14px">' +
+     PRESETS.map((p,i) => '<button data-preset="' + i + '"><i>' +
+       p.c.map(c => '<em style="background:' + c + '"></em>').join('') +
+       '</i>' + p.n + '</button>').join('') +
+   '</div>' +
+   '<label><span>밑색 고르기</span></label>' + swHTML(BASE_HUES) +
+   '<label><span>주조색 (65%)</span>' + '<button class="lock" data-lock="main" title="이 색 고정 — 밑색을 바꿔도 그대로 둔다">고정</button>' + '<input type="color" id="e-main"></label>' + rampHTML('main') +
+   '<label><span>보조색 (25%)</span>' + '<button class="lock" data-lock="sub" title="이 색 고정 — 밑색을 바꿔도 그대로 둔다">고정</button>' + '<input type="color" id="e-sub"></label>' + rampHTML('sub') +
+   '<label><span>강조색 (10%)</span>' + '<button class="lock" data-lock="accent" title="이 색 고정 — 밑색을 바꿔도 그대로 둔다">고정</button>' + '<input type="color" id="e-accent"></label>' + rampHTML('accent') +
+   '<div class="warnbox" id="e-warn"></div>' +
+   '<div class="okbox" id="e-ok">대비 기준을 모두 통과했습니다.</div>' +
+   '<div class="note-s">밑색을 고르면 아래 세 줄이 그 색의 <b>쉐이드(밝기 단계)</b>로 바뀌고, ' +
+     '주조·보조·강조가 한꺼번에 그 계열로 정해집니다. ' +
+     '그다음 <b>단계를 눌러</b> 각각을 다시 고르세요 — 이때 줄 자체는 움직이지 않습니다. ' +
+     '흰 테두리가 지금 고른 칸이고, <b>점선</b>은 그 색이 단계 사이에 있다는 뜻입니다. ' +
+     '색상칸을 눌러 직접 고르면 그 색이 새 밑색이 됩니다. ' +
+     '글자색·차트 강조색은 대비 계산으로 자동으로 정해집니다.</div>' +
+ '</div></section>' +
+
+ '<section><h4>사진</h4><div class="grp">' +
+   '<div class="row" style="margin-bottom:10px">' +
+     '<button data-place="auto" class="on">자동</button><button data-place="bg">배경</button>' +
+     '<button data-place="left">왼쪽</button><button data-place="right">오른쪽</button>' +
+     '<button data-place="free">자유</button></div>' +
+   '<div class="drop" id="e-drop">사진 파일을 여기에 끌어다 놓거나 눌러서 고르기</div>' +
+   '<input type="file" id="e-file" accept="image/*" style="display:none">' +
+   '<div class="row" style="margin-top:10px">' +
+     '<input type="text" id="e-q" placeholder="무료 사진 검색 (예: office, city)">' +
+   '</div>' +
+   '<div class="row" style="margin-top:8px"><button id="e-search">검색</button>' +
+     '<button id="e-photodel" class="danger">사진 빼기</button></div>' +
+   '<div class="row" style="margin-top:10px">' +
+     '<button id="e-crop">자르기</button>' +
+     '<button id="e-zup">앞으로</button><button id="e-zdn">뒤로</button>' +
+     '<button id="e-floatdel" class="danger">지우기</button></div>' +
+   '<div class="note-s"><b>자유</b>로 넣은 사진은 <b>끌어서 옮기고</b>, 오른쪽 아래 점을 ' +
+     '<b>끌어서 크기를 바꿉니다</b>. 한 장에 여러 개 넣을 수 있습니다. ' +
+     '자르기를 켜면 틀은 그대로 두고 <b>사진만 움직여</b> 원하는 부분을 남깁니다. ' +
+     '겹쳤을 때는 <b>앞으로 · 뒤로</b>로 쌓는 순서를 바꿉니다 — 버튼 옆에 몇 번째인지 나옵니다.</div>' +
+   '<div class="photos" id="e-results"></div>' +
+   '<div class="msg" id="e-photomsg"><b>자동</b>은 표지면 배경, 사진 자리가 있으면 그 자리, ' +
+     '없으면 오른쪽에 새로 만듭니다. 검색으로 넣으면 출처가 자동으로 적힙니다. ' +
+     '<b>표지 사진의 출처는 목차 아래에 아주 작게</b> 모입니다.</div>' +
+ '</div></section>' +
+
+ '<section><h4>투명도</h4><div class="grp">' +
+   '<label><span>사진 <i id="e-opi-v" style="font-style:normal;color:#8b919c">100%</i></span></label>' +
+   '<input type="range" id="e-opi" min="0" max="100" value="100" style="width:100%">' +
+   '<label style="margin-top:12px"><span>글자 <i id="e-opt-v" style="font-style:normal;color:#8b919c">100%</i></span></label>' +
+   '<input type="range" id="e-opt" min="20" max="100" value="100" style="width:100%">' +
+   '<div class="note-s">사진은 <b>고른 자유 사진</b>에, 없으면 <b>배경 사진</b>에 적용됩니다. ' +
+     '배경 사진은 글자가 읽히도록 자동으로 막이 깔리는데, 이 슬라이더가 그 막의 두께입니다 ' +
+     '— 100%는 막 없음, 낮출수록 사진이 옅어집니다. ' +
+     '글자는 <b>끌어서 선택한 글자</b>(없으면 커서가 있는 문단)에 적용되고, ' +
+     '슬라이더를 끄는 동안 바로 바뀝니다. 너무 흐리게 하면 대비 검사에 걸립니다.</div>' +
+ '</div></section>' +
+
+ '<section><h4>테마</h4><div class="grp"><div class="row">' +
+   '<button id="e-light" class="on">라이트</button><button id="e-dark">다크</button>' +
+ '</div></div></section>' +
+
+ '<section id="e-logosec"><h4>로고 위치</h4><div class="grp"><div class="row">' +
+   '<button data-logo="tl">좌상</button><button data-logo="tr">우상</button>' +
+   '<button data-logo="bl">좌하</button><button data-logo="br">우하</button>' +
+ '</div></div></section>' +
+
+ '<section><h4>제목</h4><div class="grp">' +
+   '<input type="text" id="e-title">' +
+   '<div class="note-s">꼬리말 왼쪽과 저장 파일 이름에 쓰입니다.</div>' +
+ '</div></section>' +
+
+ '<section><h4>저장</h4><div class="grp">' +
+   '<div class="row" style="margin-bottom:8px">' +
+     '<button id="e-html" class="primary">HTML로 저장</button></div>' +
+   '<div class="row"><button id="e-pdf">PDF로 저장</button></div>' +
+   '<div class="note-s">HTML은 편집 내용을 담은 새 파일이 내려받기 폴더에 저장됩니다. ' +
+     'PDF는 인쇄 창이 열립니다 — 대상을 "PDF로 저장", 여백을 "없음", 배경 그래픽을 켜세요.</div>' +
+ '</div></section>';
+document.body.appendChild(panel);
+
+const bar = document.createElement('div');
+bar.id = 'editbar';
+bar.innerHTML = '<b>편집 모드</b><span>글자를 눌러 바로 고칩니다</span>' +
+  '<span>· 차트 숫자를 고치면 막대 길이가 자동으로 맞춰집니다</span>' +
+  '<span style="margin-left:auto">E 키로 닫기</span>';
+document.body.appendChild(bar);
+
+const $ = id => document.getElementById(id);
+
+/* ---------- 색 적용 ---------- */
+function currentVar(n){ return getComputedStyle(root).getPropertyValue(n).trim() || '#000000'; }
+function toHex(v){
+  v = (v||'').trim();
+  if(v.startsWith('#')) return v.length===4 ? '#'+v.slice(1).split('').map(c=>c+c).join('') : v;
+  const m = v.match(/rgba?\(([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)/);
+  return m ? r2h([+m[1],+m[2],+m[3]]) : '#000000';
+}
+function applyPalette(){
+  const {light,dark,warn} = buildPalette($('e-main').value,$('e-sub').value,$('e-accent').value);
+  Object.entries(light).forEach(([k,v]) => root.style.setProperty(k,v));
+  if(root.getAttribute('data-theme') === 'dark')
+    Object.entries(dark).forEach(([k,v]) => root.style.setProperty(k,v));
+  root._pl = light; root._pd = dark;
+  const wb = $('e-warn'), ok = $('e-ok');
+  if(warn.length){ wb.innerHTML = warn.join('<br>'); wb.classList.add('show'); ok.classList.remove('show'); }
+  else { wb.classList.remove('show'); ok.classList.add('show'); }
+  if(typeof drawRamps === 'function') drawRamps();
+}
+function reapplyForTheme(){
+  if(!root._pl) return;
+  Object.entries(root._pl).forEach(([k,v]) => root.style.setProperty(k,v));
+  if(root.getAttribute('data-theme') === 'dark')
+    Object.entries(root._pd).forEach(([k,v]) => root.style.setProperty(k,v));
+}
+
+/* ---------- 글자 강조 ---------- */
+function wrapSelection(make){
+  const sel = getSelection();
+  if(!sel.rangeCount || sel.isCollapsed) return;
+  const range = sel.getRangeAt(0);
+  const node = range.commonAncestorContainer;
+  const host = (node.nodeType === 1 ? node : node.parentElement);
+  if(!host || !host.closest('[contenteditable]')) return;
+  const el = make();
+  try { range.surroundContents(el); }
+  catch(e){ el.appendChild(range.extractContents()); range.insertNode(el); }
+  sel.removeAllRanges();
+}
+const FMT = '.mark,.hl,.opa,b,strong,em,i';
+function clearFormat(){
+  const sel = getSelection();
+  if(!sel.rangeCount) return;
+  const range = sel.getRangeAt(0);
+  let anc = range.commonAncestorContainer;
+  if(anc.nodeType === 3) anc = anc.parentElement;
+  const host = anc && anc.closest('[contenteditable]');
+  if(!host) return;
+  /* 선택과 겹치는 강조 요소를 전부 벗긴다.
+     선택이 강조 안에 일부만 걸쳐 있어도, 커서만 놓여 있어도 그 강조가 통째로 풀린다.
+     (예전에는 선택 안쪽만 청소해서, 선택을 감싸고 있는 .mark 는 그대로 남았다) */
+  const hits = Array.from(host.querySelectorAll(FMT))
+    .filter(el => { try { return range.intersectsNode(el); } catch(e){ return false; } });
+  if(!hits.length) return;
+  hits.forEach(el => { if(el.parentNode) el.replaceWith(...el.childNodes); });
+  host.normalize();
+  sel.removeAllRanges();
+}
+
+/* ---------- 차트 숫자를 고치면 막대 길이를 다시 비례시킨다 ---------- */
+function rescaleChart(chart){
+  const rows = Array.from(chart.querySelectorAll('.bar')).map(b => {
+    const t = (b.querySelector('.v') || {}).textContent || '';
+    return { bar:b, v: parseFloat(String(t).replace(/[^0-9.\-]/g,'')) };
+  }).filter(r => !isNaN(r.v) && r.v > 0);
+  if(rows.length < 2) return;
+  const max = Math.max.apply(null, rows.map(r => r.v));
+  rows.forEach(r => {
+    const i = r.bar.querySelector('i');
+    if(i) i.style.height = (r.v / max * 82).toFixed(1) + '%';
+  });
+}
+
+/* ---------- 슬라이드 목록 ---------- */
+let dragFrom = null;
+function buildList(){
+  const box = $('e-list');
+  box.innerHTML = '';
+  slides.forEach((s,i) => {
+    const a = document.createElement('a');
+    a.className = (i === current ? 'cur' : '');
+    a.draggable = true;
+    a.dataset.i = i;
+    a.innerHTML = '<u>' + (i+1) + '</u><s></s>';
+    a.querySelector('s').textContent = slideLabel(s);
+    a.onclick = () => { show(i); refreshUI(); };
+
+    /* 끌어서 순서 바꾸기 */
+    a.addEventListener('dragstart', e => {
+      dragFrom = i;
+      a.classList.add('drag');
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', String(i));   /* 파이어폭스는 이게 있어야 끌린다 */
+    });
+    a.addEventListener('dragend', () => {
+      dragFrom = null;
+      box.querySelectorAll('a').forEach(x => x.classList.remove('drag','over','over-b'));
+    });
+    a.addEventListener('dragover', e => {
+      if(dragFrom === null) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      const r = a.getBoundingClientRect();
+      const after = (e.clientY - r.top) > r.height / 2;
+      box.querySelectorAll('a').forEach(x => x.classList.remove('over','over-b'));
+      a.classList.add(after ? 'over-b' : 'over');
+    });
+    a.addEventListener('dragleave', () => a.classList.remove('over','over-b'));
+    a.addEventListener('drop', e => {
+      e.preventDefault();
+      if(dragFrom === null || dragFrom === i) return;
+      const r = a.getBoundingClientRect();
+      const after = (e.clientY - r.top) > r.height / 2;
+      const moving = slides[dragFrom];
+      const target = slides[i];
+      if(after) target.after(moving); else target.before(moving);
+      rebuildDeck();
+      show(Array.prototype.indexOf.call(slides, moving));
+      refreshUI();
+    });
+
+    box.appendChild(a);
+  });
+  const cur = box.querySelector('.cur');
+  if(cur) cur.scrollIntoView({block:'nearest'});
+}
+
+/* ---------- 로고가 없으면 로고 항목을 감춘다 ---------- */
+function hasLogo(){
+  return Array.from(document.querySelectorAll('.logo'))
+    .some(img => img.complete && img.naturalWidth > 0);
+}
+function refreshUI(){
+  buildList();
+  $('e-logosec').style.display = hasLogo() ? '' : 'none';
+  const lp = document.getElementById('stage').getAttribute('data-logo') || 'br';
+  panel.querySelectorAll('[data-logo]').forEach(b => b.classList.toggle('on', b.dataset.logo === lp));
+  if(typeof syncOpacityUI === 'function') syncOpacityUI();   /* 장이 바뀌면 사진 투명도 눈금도 따라간다 */
+}
+
+/* ---------- 편집 모드 ---------- */
+function setEditing(on){
+  editing = on;
+  root.classList.toggle('editing', on);
+  if(!on && typeof selectBox === 'function'){ selectBox(null); selectFloat(null); }
+  document.querySelectorAll(EDITABLE).forEach(el => {
+    if(on) el.setAttribute('contenteditable','true');
+    else el.removeAttribute('contenteditable');
+  });
+  if(on){
+    $('e-main').value   = toHex(currentVar('--c-main'));
+    $('e-sub').value    = toHex(currentVar('--c-sub'));
+    $('e-accent').value = toHex(currentVar('--c-accent'));
+    /* 저장했다 다시 연 파일·되돌린 뒤에도 쉐이드 줄의 기준(밑색)을 되찾는다 */
+    baseHex = root.style.getPropertyValue('--c-base').trim() || $('e-main').value;
+    $('e-title').value  = document.title;
+    const dk = root.getAttribute('data-theme') === 'dark';
+    $('e-light').classList.toggle('on', !dk);
+    $('e-dark').classList.toggle('on', dk);
+    drawRamps();
+    wireAllFloats();
+    syncOpacityUI();
+    refreshUI();
+  }
+  fit();
+}
+
+/* ---------- 저장 ---------- */
+function serialize(){
+  const clone = root.cloneNode(true);
+  clone.classList.remove('editing');
+  clone.querySelectorAll('#editor,#editbar,#tbox-hd').forEach(n => n.remove());
+  clone.querySelectorAll('.boxsel').forEach(n => n.classList.remove('boxsel'));
+  clone.querySelectorAll('.sel,.crop').forEach(n => n.classList.remove('sel','crop'));
+  clone.querySelectorAll('[contenteditable]').forEach(n => n.removeAttribute('contenteditable'));
+  clone.querySelectorAll('.slide').forEach(n => n.classList.remove('active'));
+  clone.querySelectorAll('.step-in').forEach(n => n.classList.remove('shown'));
+  const st = clone.querySelector('#stage'); if(st) st.style.transform = '';
+  const jl = clone.querySelector('#jump ol'); if(jl) jl.innerHTML = '';
+  return '<!DOCTYPE html>\n' + clone.outerHTML;
+}
+function saveHTML(){
+  const d = new Date();
+  const ymd = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' +
+              String(d.getDate()).padStart(2,'0');
+  const name = (document.title || '슬라이드').replace(/[\\/:*?"<>|]/g,'') + ', ' + ymd + '.html';
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([serialize()], {type:'text/html;charset=utf-8'}));
+  a.download = name;
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+}
+function savePDF(){
+  const was = editing;
+  if(was) setEditing(false);
+  slides.forEach(s => s.querySelectorAll('.step-in').forEach(el => el.classList.add('shown')));
+  setTimeout(() => {
+    window.print();
+    if(was) setTimeout(() => setEditing(true), 400);
+  }, 120);
+}
+
+/* ---------- 연결 ---------- */
+['e-sub','e-accent'].forEach(id => $(id).addEventListener('input', applyPalette));
+
+/* ---------- 밑색 ----------
+   쉐이드 줄 세 개는 **언제나 '밑색' 하나**에서 만든다. 예전에는 '지금 주조색'에서 만들었는데,
+   그러면 주조를 300단계로 고르는 순간 줄이 통째로 다시 계산돼서 (300단계는 이미 채도가
+   한 번 빠진 색이라) 줄 전체가 조금씩 씻긴 색으로 바뀌었다. 고를 때마다 색이 달라지고,
+   방금 누른 칸이 새 줄에는 없어서 어디를 골랐는지 표시도 사라졌다.
+   밑색을 따로 들고 있으면 줄이 움직이지 않는다. 값은 --c-base 로 무대에 같이 저장돼
+   되돌리기·파일 저장에도 함께 실린다. */
+let baseHex = null;
+function baseOf(){
+  return baseHex || root.style.getPropertyValue('--c-base').trim() || $('e-main').value;
+}
+/* 밑색을 고르면 세 색이 한꺼번에 그 색 계열로 바뀐다.
+   주조는 고른 색 그대로, 보조는 800단계, 강조는 900단계를 쓴다.
+   (한 색조로 묶인 배색이라 대비 기준을 맞추기 쉽고, 뒤에서 단계별로 다시 고를 수 있다) */
+/* 색 고정 — 켜 둔 색은 밑색·프리셋을 바꿔도 건드리지 않는다 (요구사항 명세 7-3).
+   "손으로 고른 색은 자동으로 지켜 준다" 로 하면 무엇이 지켜지고 무엇이 안 지켜지는지
+   사용자가 알 수 없다. 어느 색을 붙잡아 둘지 직접 정하게 하는 편이 예측 가능하다. */
+const locked = { main:false, sub:false, accent:false };
+function setRole(role, hex){
+  if(locked[role]) return;
+  $(role === 'main' ? 'e-main' : role === 'sub' ? 'e-sub' : 'e-accent').value = hex;
+}
+function applyBase(hex){
+  baseHex = hex;
+  root.style.setProperty('--c-base', hex);
+  const ramp = shadeRamp(hex);
+  const at = k => (ramp.find(r => r.k === k) || {}).c;
+  setRole('main',   hex);
+  setRole('sub',    at('800'));
+  setRole('accent', at('900'));
+  applyPalette();
+}
+panel.querySelectorAll('.lock').forEach(b => b.onclick = e => {
+  /* 이 버튼은 <label> 안에 있다. 막지 않으면 label 이 색상칸을 눌러 색 고르기 창이 열린다 */
+  e.preventDefault(); e.stopPropagation();
+  const role = b.dataset.lock;
+  locked[role] = !locked[role];
+  b.classList.toggle('on', locked[role]);
+  b.textContent = locked[role] ? '고정됨' : '고정';
+  const names = { main:'주조색', sub:'보조색', accent:'강조색' };
+  photoMsg(locked[role]
+    ? '<b>' + names[role] + ' 고정.</b> 이제 밑색이나 프리셋을 바꿔도 이 색은 그대로 있습니다.'
+    : names[role] + ' 고정을 풀었습니다.');
+});
+panel.querySelectorAll('.sw b').forEach(b => b.onclick = () => applyBase(b.dataset.c));
+/* 색상칸으로 주조색을 직접 바꿔도 보조·강조가 따라온다.
+   끄는 동안(input)에도 같이 따라오게 해야 손을 떼기 전까지 색이 따로 노는 일이 없다. */
+$('e-main').addEventListener('input',  e => applyBase(e.target.value));
+$('e-main').addEventListener('change', e => applyBase(e.target.value));
+
+/* 두 색이 얼마나 다른가 — 줄에서 '지금 이 색'에 해당하는 칸을 찾을 때 쓴다 */
+function colorGap(a, b){
+  const x = h2r(a), y = h2r(b);
+  return Math.abs(x[0]-y[0]) + Math.abs(x[1]-y[1]) + Math.abs(x[2]-y[2]);
+}
+/* 쉐이드 줄 다시 그리기 — 기준은 항상 '밑색'이다 */
+function drawRamps(){
+  const ramp = shadeRamp(baseOf());
+  panel.querySelectorAll('.ramp').forEach(box => {
+    const role = box.dataset.for;
+    const cur = (role === 'main' ? $('e-main') : role === 'sub' ? $('e-sub') : $('e-accent')).value.toLowerCase();
+    /* 정확히 같은 칸이 있으면 그 칸을, 없으면(밑색이 단계 사이 색일 때) 가장 가까운 칸을
+       점선으로 표시한다. 표시가 아예 없으면 "내가 뭘 고른 건지" 알 수 없다. */
+    let onIdx = ramp.findIndex(st => st.c.toLowerCase() === cur);
+    let near = false;
+    if(onIdx < 0){
+      near = true;
+      let best = 1e9;
+      ramp.forEach((st,i) => { const g = colorGap(st.c, cur); if(g < best){ best = g; onIdx = i; } });
+      if(best > 150){ onIdx = -1; near = false; }
+    }
+    box.innerHTML = ramp.map((st,i) =>
+      '<b data-c="' + st.c + '" data-role="' + role + '" style="background:' + st.c +
+      ';color:' + (parseInt(st.k,10) >= 400 ? 'rgba(255,255,255,.75)' : 'rgba(0,0,0,.45)') + '"' +
+      (i === onIdx ? ' class="on' + (near ? ' near' : '') + '"' : '') + '>' + st.k + '</b>').join('');
+    box.querySelectorAll('b').forEach(b => b.onclick = () => {
+      const inp = b.dataset.role === 'main' ? $('e-main')
+                : b.dataset.role === 'sub'  ? $('e-sub') : $('e-accent');
+      inp.value = b.dataset.c;
+      applyPalette();      /* 줄은 밑색 기준이므로 그대로 있고, 고른 칸만 표시가 옮겨간다 */
+    });
+  });
+}
+panel.querySelectorAll('[data-preset]').forEach(b => b.onclick = () => {
+  const c = PRESETS[+b.dataset.preset].c;
+  baseHex = c[0];                       /* 프리셋의 주조색이 그 배색의 밑색이다 */
+  root.style.setProperty('--c-base', c[0]);
+  setRole('main', c[0]); setRole('sub', c[1]); setRole('accent', c[2]);
+  applyPalette();
+});
+
+$('e-mark').onclick  = () => { pushUndo(); wrapSelection(() => { const s=document.createElement('span');
+                                                   s.className='mark'; return s; }); };
+$('e-bold').onclick  = () => { pushUndo(); wrapSelection(() => document.createElement('b')); };
+$('e-plain').onclick = () => { pushUndo(); clearFormat(); };
+
+$('e-light').onclick = () => { root.removeAttribute('data-theme');
+  $('e-light').classList.add('on'); $('e-dark').classList.remove('on'); reapplyForTheme(); };
+$('e-dark').onclick  = () => { root.setAttribute('data-theme','dark');
+  $('e-dark').classList.add('on'); $('e-light').classList.remove('on'); reapplyForTheme(); };
+
+panel.querySelectorAll('[data-logo]').forEach(b => b.onclick = () => {
+  document.getElementById('stage').setAttribute('data-logo', b.dataset.logo);
+  document.body.classList.toggle('credit-flip', b.dataset.logo === 'bl');
+  panel.querySelectorAll('[data-logo]').forEach(x => x.classList.toggle('on', x === b));
+});
+
+$('e-title').addEventListener('input', e => { document.title = e.target.value;
+  rebuildDeck(); render(); refreshUI(); });
+
+$('e-prev').onclick = () => { if(current > 0){ show(current-1); refreshUI(); } };
+$('e-next').onclick = () => { if(current < slides.length-1){ show(current+1); refreshUI(); } };
+$('e-dup').onclick  = () => { const c = slides[current]; if(!c) return; pushUndo();
+  const copy = c.cloneNode(true); copy.classList.remove('active'); c.after(copy);
+  rebuildDeck(); setEditing(true); show(current+1); refreshUI(); };
+$('e-del').onclick  = () => { if(slides.length <= 1) return; pushUndo();
+  dropCredit(slides[current]);          /* 이 장 사진의 출처 줄도 같이 지운다 */
+  slides[current].remove();
+  rebuildDeck(); show(Math.min(current, slides.length-1)); refreshUI(); };
+$('e-up').onclick   = () => { if(current === 0) return; pushUndo();
+  slides[current-1].before(slides[current]); rebuildDeck(); show(current-1); refreshUI(); };
+$('e-down').onclick = () => { if(current >= slides.length-1) return; pushUndo();
+  slides[current+1].after(slides[current]); rebuildDeck(); show(current+1); refreshUI(); };
+
+$('e-undo').onclick = () => undo();
+$('e-redo').onclick = () => redo();
+
+$('e-html').onclick = saveHTML;
+$('e-pdf').onclick  = savePDF;
+
+
+
+/* ---------- 되돌리기 · 다시하기 ----------
+   무대 전체를 스냅샷으로 찍어 쌓는다. 글자 입력은 잠시 멈췄을 때 한 번만 찍는다.
+   사진(base64)이 들어간 덱은 스냅샷이 무거워서 20개까지만 들고 있는다. */
+const UNDO_MAX = 60;          /* 60단계. 사진이 많은 덱은 아래 용량 제한이 먼저 걸린다 */
+const UNDO_BYTES = 24e6;      /* 스냅샷 총 용량 상한 — base64 사진 때문에 장수만으론 부족하다 */
+let undoStack = [], redoStack = [], snapTimer = null, restoring = false;
+
+function snapshot(){
+  const st = document.getElementById('stage');
+  return {
+    html: st.innerHTML,
+    logo: st.getAttribute('data-logo') || 'br',
+    theme: root.getAttribute('data-theme') || '',
+    vars: root.getAttribute('style') || '',
+    at: current,
+  };
+}
+function pushUndo(){
+  if(restoring) return;
+  undoStack.push(snapshot());
+  if(undoStack.length > UNDO_MAX) undoStack.shift();
+  let bytes = undoStack.reduce((n,s) => n + s.html.length, 0);
+  while(undoStack.length > 3 && bytes > UNDO_BYTES) bytes -= undoStack.shift().html.length;
+  redoStack.length = 0;
+  updateUndoUI();
+}
+/* 연속 타자를 한 뭉치로 묶되, '너무 크게' 묶지 않는다.
+   예전에는 0.6초만 쉬지 않으면 문단 하나를 통째로 치는 동안 스냅샷이 한 번밖에 안 찍혀서,
+   되돌리기를 눌러도 한 번에 다 지워지고 그다음엔 되돌릴 게 없었다 ("되돌리기가 한 번밖에").
+   이제는 (1) 0.6초 쉬거나 (2) 단어 경계(스페이스·엔터)이거나 (3) 12자를 넘었거나
+   (4) 다른 문단으로 옮겼거나 (5) 글자 입력이 아닌 조작이면 새 뭉치로 끊는다. */
+let typing = false, burstLen = 0, burstHost = null;
+const BURST_MAX = 12;
+function noteTyping(){
+  typing = true;
+  clearTimeout(snapTimer);
+  snapTimer = setTimeout(() => { typing = false; burstLen = 0; burstHost = null; }, 600);
+}
+function burstBreaks(e){
+  const host = e.target;
+  if(host !== burstHost) return true;                       /* 다른 문단으로 옮겼다 */
+  if(e.inputType !== 'insertText' &&
+     e.inputType !== 'insertCompositionText') return true;   /* 지우기·붙여넣기·서식 */
+  const d = e.data || '';
+  if(/[\s.,!?·:;)\]}]/.test(d)) return true;                 /* 단어가 끝났다 */
+  if(burstLen >= BURST_MAX) return true;                     /* 뭉치가 너무 커졌다 */
+  return false;
+}
+function restore(snap){
+  restoring = true;
+  /* 되돌리면 DOM 이 통째로 새것이 된다 — 옛 노드를 가리키던 손잡이는 모두 끊어 둔다 */
+  selFloat = null; optTarget = null; lastRange = null;
+  const st = document.getElementById('stage');
+  st.innerHTML = snap.html;
+  st.setAttribute('data-logo', snap.logo);
+  if(snap.theme) root.setAttribute('data-theme', snap.theme); else root.removeAttribute('data-theme');
+  root.setAttribute('style', snap.vars);
+  document.body.classList.toggle('credit-flip', snap.logo === 'bl');
+  rebuildDeck();
+  show(Math.min(snap.at, slides.length - 1));
+  if(editing) setEditing(true);          /* 편집 표시를 새 DOM 에 다시 붙인다 */
+  restoring = false;
+  updateUndoUI();
+}
+function undo(){
+  if(!undoStack.length) return;
+  redoStack.push(snapshot());
+  restore(undoStack.pop());
+}
+function redo(){
+  if(!redoStack.length) return;
+  undoStack.push(snapshot());
+  restore(redoStack.pop());
+}
+function updateUndoUI(){
+  const u = $('e-undo'), r = $('e-redo');
+  if(u) u.disabled = !undoStack.length;
+  if(r) r.disabled = !redoStack.length;
+  if(u) u.style.opacity = undoStack.length ? '1' : '.4';
+  if(r) r.style.opacity = redoStack.length ? '1' : '.4';
+}
+
+addEventListener('keydown', e => {
+  if(!(e.ctrlKey || e.metaKey)) return;
+  const k = e.key.toLowerCase();
+  if(k === 'z' && !e.shiftKey){ e.preventDefault(); undo(); }
+  else if((k === 'z' && e.shiftKey) || k === 'y'){ e.preventDefault(); redo(); }
+}, true);
+updateUndoUI();   /* 선언이 모두 끝난 뒤에 부른다 */
+
+/* ---------- 사진 넣기 ----------
+   1) 내 파일 끌어다 놓기 (인터넷 필요 없음)
+   2) 무료 사진 검색 (사용자 브라우저가 직접 가져온다 — 인터넷 필요)
+   어느 쪽이든 가로 1600px 로 줄이고 압축해 파일 안에 통째로 심는다.
+   검색으로 넣은 사진은 출처가 자동으로 .credit 에 적힌다. */
+
+const MAXW = 1600;
+function toDataURL(srcBlobOrURL){
+  return new Promise((ok, fail) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      const sc = Math.min(1, MAXW / img.naturalWidth);
+      const c = document.createElement('canvas');
+      c.width  = Math.round(img.naturalWidth  * sc);
+      c.height = Math.round(img.naturalHeight * sc);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      try { ok(c.toDataURL('image/jpeg', 0.82)); }
+      catch(e){ fail(new Error('이 사진은 보안 정책 때문에 파일에 심을 수 없습니다.')); }
+    };
+    let tmp = null;
+    const done = () => { if(tmp){ URL.revokeObjectURL(tmp); tmp = null; } };
+    const onload = img.onload;
+    img.onload = () => { try { onload(); } finally { done(); } };
+    img.onerror = () => { done(); fail(new Error('사진을 불러오지 못했습니다. 다른 파일을 골라 보세요.')); };
+    if(typeof srcBlobOrURL === 'string') img.src = srcBlobOrURL;
+    else { tmp = URL.createObjectURL(srcBlobOrURL); img.src = tmp; }
+  });
+}
+function photoMsg(t){ $('e-photomsg').innerHTML = t; }
+
+/* 사진 넣는 자리 — 자동 / 배경 / 왼쪽 / 오른쪽 */
+let placeMode = 'auto';
+
+function setBgPhoto(s, dataURL){
+  let wrap = s.querySelector('.bg-photo');
+  if(!wrap){
+    wrap = document.createElement('div');
+    wrap.className = 'bg-photo';
+    wrap.innerHTML = '<img alt="배경 사진">';
+    s.prepend(wrap);
+  }
+  const img = wrap.querySelector('img');
+  img.src = dataURL;
+  s.classList.add('has-bgphoto');
+  return img;
+}
+
+/* 사진 자리가 없는 슬라이드에 '새로' 만들어 넣는다 — 기존 내용을 한쪽으로 몰고 반대쪽에 사진 */
+function addSidePhoto(s, side, dataURL){
+  const body = s.querySelector('.body-main');
+  if(!body) return false;
+  let two = body.querySelector(':scope > .two.photo-split');
+  if(!two){
+    two = document.createElement('div');
+    two.className = 'two photo-split';
+    const col = document.createElement('div');
+    col.className = 'stack';
+    while(body.firstChild) col.appendChild(body.firstChild);
+    const ph = document.createElement('div');
+    ph.className = 'photo-hero';
+    ph.innerHTML = '<img alt="슬라이드 사진">';
+    if(side === 'left'){ two.appendChild(ph); two.appendChild(col); }
+    else { two.appendChild(col); two.appendChild(ph); }
+    body.appendChild(two);
+  } else {
+    const ph = two.querySelector('.photo-hero');
+    if(side === 'left' && two.firstElementChild !== ph) two.prepend(ph);
+    if(side === 'right' && two.lastElementChild !== ph) two.appendChild(ph);
+  }
+  const img = two.querySelector('.photo-hero img');
+  img.src = dataURL;
+  return img;
+}
+
+/* .body-main 이 없는 장(표지·마무리 등)에서 쓰는 왼쪽/오른쪽 사진.
+   슬라이드 반쪽을 사진이 통째로 채우고, .side-left/.side-right 가 글을 반대쪽으로 민다. */
+function setBleedPhoto(s, side, dataURL){
+  let ph = s.querySelector(':scope > .photo-hero.bleed');
+  if(!ph){
+    ph = document.createElement('div');
+    ph.className = 'photo-hero bleed';
+    ph.innerHTML = '<img alt="슬라이드 사진">';
+    s.prepend(ph);
+  }
+  ph.classList.remove('left','right');
+  ph.classList.add(side);
+  s.classList.remove('side-left','side-right');
+  s.classList.add(side === 'left' ? 'side-left' : 'side-right');
+  const img = ph.querySelector('img');
+  img.src = dataURL;
+  return img;
+}
+
+/* 표지·마무리 사진의 출처는 표지에 적지 않고 목차에 아주 작게 모은다 (요구사항 명세 6-3).
+   목차가 없는 덱이면 어쩔 수 없이 그 장에 적는다. */
+/* 출처 줄과 사진을 열쇠(data-credit-key)로 묶어 둔다. 사진을 빼면 그 열쇠로 줄을 찾아
+   같이 지운다 — 안 그러면 사진은 없는데 "사진: …" 만 목차에 남는다 (요구사항 명세 7-1). */
+let creditSeq = 0;
+function nextCreditKey(){
+  /* 저장했다 다시 연 파일에도 옛 열쇠가 남아 있으므로 겹치지 않게 뒤에서부터 이어 붙인다 */
+  const used = Array.from(document.querySelectorAll('[data-credit-key]'))
+    .map(el => parseInt(String(el.dataset.creditKey).replace(/\D/g,''), 10) || 0);
+  creditSeq = Math.max(creditSeq, 0, ...used) + 1;
+  return 'p' + creditSeq;
+}
+/* 사진 하나(또는 그 안의 사진 전부)에 딸린 출처 줄을 지운다 */
+function dropCredit(node){
+  if(!node) return;
+  const imgs = node.tagName === 'IMG' ? [node] : Array.from(node.querySelectorAll('img'));
+  imgs.forEach(img => {
+    const key = img.dataset && img.dataset.creditKey;
+    if(!key) return;
+    delete img.dataset.creditKey;
+    document.querySelectorAll('[data-credit-key="' + key + '"]').forEach(el => {
+      if(el === img || el.classList.contains('cite')) return;   /* 각주가 든 .cite 는 건드리지 않는다 */
+      el.remove();                          /* .credit 또는 목차 .credit-mini 안의 한 줄 */
+    });
+  });
+  /* 줄이 하나도 안 남은 목차 출처 상자는 통째로 치운다 */
+  document.querySelectorAll('.credit-mini').forEach(box => {
+    if(!box.querySelector('span')) box.remove();
+  });
+}
+function putCredit(s, creditHTML, img){
+  const coverLike = s.classList.contains('cover') || s.classList.contains('closing');
+  const toc = slides.find(x => x.classList.contains('toc'));
+  if(img) dropCredit(img);                  /* 같은 자리에 새 사진이면 옛 출처부터 치운다 */
+  const key = img ? nextCreditKey() : null;
+  if(key) img.dataset.creditKey = key;
+
+  if(coverLike && toc){
+    let box = toc.querySelector('.credit-mini');
+    if(!box){
+      box = document.createElement('div');
+      box.className = 'credit-mini';
+      toc.appendChild(box);
+    }
+    const line = document.createElement('span');
+    line.innerHTML = creditHTML;
+    if(key) line.dataset.creditKey = key;
+    const already = Array.from(box.children).some(x => x.textContent === line.textContent);
+    if(!already) box.appendChild(line);
+    if(editing) box.setAttribute('contenteditable','true');
+    return toc;
+  }
+  let c = s.querySelector('.credit') || s.querySelector('.cite');
+  if(!c){ c = document.createElement('div'); c.className = 'credit'; s.appendChild(c); }
+  c.innerHTML = creditHTML;
+  /* 열쇠는 .credit 에만 건다. 논문 각주가 든 .cite 에 걸면 사진을 뺄 때 각주까지 사라진다 */
+  if(key && c.classList.contains('credit')) c.dataset.creditKey = key;
+  if(editing) c.setAttribute('contenteditable','true');
+  return s;
+}
+
+/* 현재 장에 사진을 넣는다. 자리가 없으면 만들어서 넣는다. */
+function placePhoto(dataURL, creditHTML){
+  const s = slides[current];
+  if(!s) return false;
+  const hero = s.querySelector('.photo-hero img');
+  const isCover = s.classList.contains('cover') || s.classList.contains('closing');
+  let mode = placeMode;
+  if(mode === 'auto') mode = isCover ? 'bg' : (hero ? 'hero' : 'right');
+
+  /* 어느 img 에 들어갔는지 들고 있는다 — 출처 줄을 그 사진에 묶어 두기 위해서다 */
+  let img = null;
+  if(mode === 'free'){
+    const box = makeFloat(dataURL);
+    img = box && box.querySelector('img');
+  } else if(mode === 'bg'){
+    img = setBgPhoto(s, dataURL);
+  } else if(mode === 'hero' && hero){
+    dropCredit(hero);
+    hero.src = dataURL; hero.alt = '슬라이드 사진'; img = hero;
+  } else if(mode === 'left' || mode === 'right'){
+    /* 표지처럼 .body-main 이 없는 장에서도 되게 한다 (요구사항 명세 6-4).
+       예전에는 여기서 그냥 실패해서 표지에선 왼쪽·오른쪽 버튼이 먹히지 않았다. */
+    if(isCover || !s.querySelector('.body-main')){
+      img = setBleedPhoto(s, mode, dataURL);
+    } else if(hero && !s.querySelector('.two.photo-split')){
+      dropCredit(hero);
+      hero.src = dataURL; hero.alt = '슬라이드 사진'; img = hero;   /* 이미 사진 자리가 있으면 그걸 쓴다 */
+    } else {
+      img = addSidePhoto(s, mode, dataURL) || setBleedPhoto(s, mode, dataURL);
+    }
+  } else {
+    img = setBgPhoto(s, dataURL);
+  }
+  /* 출처 — 검색으로 넣었으면 자동으로 적는다 */
+  if(creditHTML) putCredit(s, creditHTML, img);
+  syncOpacityUI();          /* 새로 깔린 막 두께를 슬라이더 눈금에 바로 반영한다 */
+  return true;
+}
+function removePhoto(){
+  const s = slides[current]; if(!s) return;
+  const bg = s.querySelector('.bg-photo');
+  if(bg){
+    if(selFloat === bg || (selFloat && bg.contains(selFloat))) selectFloat(null);
+    dropCredit(bg);                       /* 목차에 적어 둔 출처 줄도 같이 지운다 */
+    bg.remove(); s.classList.remove('has-bgphoto');
+    s.style.removeProperty('--veil-a');
+    syncOpacityUI();
+    photoMsg('배경 사진을 뺐습니다.'); return;
+  }
+  const bl = s.querySelector(':scope > .photo-hero.bleed');
+  if(bl){
+    dropCredit(bl);
+    bl.remove(); s.classList.remove('side-left','side-right');
+    photoMsg('반쪽 사진을 빼고 원래 배치로 되돌렸습니다.'); return;
+  }
+  /* 새로 만든 좌우 사진 자리는 원래 배치로 되돌린다 */
+  const two = s.querySelector('.two.photo-split');
+  if(two){
+    dropCredit(two);
+    const body = two.parentElement;
+    const col = two.querySelector('.stack');
+    if(col){ while(col.firstChild) body.appendChild(col.firstChild); }
+    two.remove();
+    photoMsg('사진 자리를 빼고 원래 배치로 되돌렸습니다.');
+    return;
+  }
+  photoMsg('이 장에는 뺄 배경·추가 사진이 없습니다. 원래 있던 사진은 새 사진으로 덮어쓰세요.');
+}
+
+/* --- 내 파일 --- */
+async function useFile(file){
+  if(!file || !/^image\//.test(file.type)){ photoMsg('이미지 파일만 넣을 수 있습니다.'); return; }
+  try {
+    const d = await toDataURL(file);
+    pushUndo();
+    const had = !!(slides[current] && slides[current].querySelector('.bg-photo'));
+    if(placePhoto(d, null))
+      photoMsg(placeMode === 'free'
+        ? '자유 사진을 넣었습니다. 끌어서 옮기고, 오른쪽 아래 점으로 크기를 바꾸세요. ' +
+          '<b>자르기</b>를 켜면 틀 안에서 사진만 움직입니다.'
+        : (had && (placeMode === 'bg' || placeMode === 'auto')
+            ? '배경 사진을 <b>새 사진으로 바꿨습니다.</b> 내 파일은 출처가 자동으로 적히지 않습니다.'
+            : '사진을 넣었습니다. <b>내 파일은 출처가 자동으로 적히지 않으니</b> 필요하면 직접 적으세요.'));
+  } catch(e){ photoMsg(e.message); }
+}
+$('e-drop').onclick = () => $('e-file').click();
+/* 같은 파일을 연달아 고르면 change 가 안 뜨므로 매번 값을 비운다 */
+$('e-file').onchange = e => {
+  const f = e.target.files[0];
+  e.target.value = '';                 /* 같은 파일을 연달아 고를 수 있게 매번 비운다 */
+  if(!f) return;                       /* 고르기 창을 그냥 닫은 것 — 오류가 아니다 */
+  useFile(f);
+};
+['dragenter','dragover'].forEach(t => $('e-drop').addEventListener(t, e => {
+  e.preventDefault(); $('e-drop').classList.add('on'); }));
+['dragleave','drop'].forEach(t => $('e-drop').addEventListener(t, e => {
+  e.preventDefault(); $('e-drop').classList.remove('on'); }));
+$('e-drop').addEventListener('drop', e => {
+  const f = e.dataTransfer.files && e.dataTransfer.files[0];
+  if(f) useFile(f);
+});
+$('e-photodel').onclick = () => { pushUndo(); removePhoto(); };
+panel.querySelectorAll('[data-place]').forEach(b => b.onclick = () => {
+  placeMode = b.dataset.place;
+  panel.querySelectorAll('[data-place]').forEach(x => x.classList.toggle('on', x === b));
+  if(placeMode === 'free')
+    photoMsg('<b>자유</b> — 이제 넣는 사진은 원하는 자리에 놓입니다. 한 장에 여러 개 넣을 수 있습니다.');
+});
+
+/* --- 무료 사진 검색 ---
+   위키미디어 공용(Wikimedia Commons)을 쓴다. 열쇠(API key)가 필요 없고,
+   origin=* 로 로컬 파일에서도 부를 수 있으며, 저작자·라이선스를 함께 준다. */
+async function searchPhotos(q){
+  const box = $('e-results');
+  box.innerHTML = '';
+  photoMsg('찾는 중…');
+  const url = 'https://commons.wikimedia.org/w/api.php?origin=*&format=json&action=query' +
+    '&generator=search&gsrnamespace=6&gsrlimit=12' +
+    '&gsrsearch=' + encodeURIComponent('filetype:bitmap ' + q) +
+    '&prop=imageinfo&iiprop=url|extmetadata&iiurlwidth=1600';
+  let data;
+  try {
+    const r = await fetch(url);
+    if(!r.ok) throw new Error('HTTP ' + r.status);
+    data = await r.json();
+  } catch(e){
+    photoMsg('<b>사진을 검색하지 못했습니다.</b> 인터넷 연결을 확인하거나, ' +
+             '위의 끌어다 놓기로 내 사진을 넣으세요. (' + e.message + ')');
+    return;
+  }
+  const pages = data.query && data.query.pages;
+  if(!pages){ photoMsg('검색 결과가 없습니다. 다른 단어로 찾아보세요.'); return; }
+  const list = Object.values(pages).map(pg => {
+    const ii = (pg.imageinfo || [])[0] || {};
+    const md = ii.extmetadata || {};
+    const strip = h => (h ? String(h).replace(/<[^>]*>/g,'').trim() : '');
+    return {
+      thumb: ii.thumburl, full: ii.thumburl,
+      title: (pg.title || '').replace(/^File:/,'').replace(/\.[a-z]+$/i,''),
+      author: strip(md.Artist && md.Artist.value) || '작자 미상',
+      license: strip(md.LicenseShortName && md.LicenseShortName.value) || '위키미디어 공용',
+      page: 'https://commons.wikimedia.org/wiki/' + encodeURIComponent(pg.title || ''),
+    };
+  }).filter(x => x.thumb);
+  if(!list.length){ photoMsg('결과가 없습니다. 다른 단어로 찾아보세요.'); return; }
+
+  list.forEach(it => {
+    const im = document.createElement('img');
+    im.src = it.thumb; im.title = it.title + ' · ' + it.license;
+    im.onclick = async () => {
+      photoMsg('사진을 넣는 중…');
+      try {
+        const d = await toDataURL(it.full);
+        const credit = '사진: ' + it.title + ' · ' + it.author + ' · ' + it.license +
+                       ' (위키미디어 공용)';
+        if(placePhoto(d, credit))
+          photoMsg('사진을 넣고 출처를 적었습니다. <b>' + it.license + '</b> 조건을 확인하세요.');
+      } catch(e){ photoMsg(e.message + ' 다른 사진을 골라 보세요.'); }
+    };
+    box.appendChild(im);
+  });
+  photoMsg('마음에 드는 사진을 누르면 현재 장에 들어갑니다. 전부 자유 이용 라이선스입니다.');
+}
+
+/* ---------- 자유 사진 : 옮기기 · 크기 · 자르기 ----------
+   좌표는 무대 기준 px 로 넣는다(무대가 1920x1080 고정이라 어디서 열어도 같은 자리).
+   화면은 통째로 축소돼 있으므로, 마우스 이동량을 그 배율로 나눠야 손과 사진이 같이 움직인다. */
+let selFloat = null, cropMode = false;
+
+function stageScale(){
+  const st = document.getElementById('stage');
+  return st.getBoundingClientRect().width / 1920 || 1;
+}
+/* 어떤 사진이든(자유 사진·본문 사진·배경 사진) 눌러서 고른다 (요구사항 명세 8-6, 8-10).
+   고른 사진은 투명도·자르기·크기 조절의 대상이 된다. */
+function selectFloat(el){
+  document.querySelectorAll('.sel').forEach(x => x.classList.remove('sel'));
+  selFloat = el || null;
+  if(el) el.classList.add('sel');
+  syncOpacityUI();
+  if(typeof syncFloatZUI === 'function') syncFloatZUI();
+}
+/* 자르기로 실제로 움직일 수 있는 여유(px). object-fit:cover 로 잘려 나간 만큼이다.
+   여유가 0 이면 사진이 틀에 딱 맞아 자를 것이 없다. */
+function cropRoom(box){
+  const img = box.querySelector('img');
+  if(!img || !img.naturalWidth) return {x:0, y:0};
+  const r = box.getBoundingClientRect(), k = stageScale() || 1;
+  const bw = r.width / k, bh = r.height / k;                 /* 무대 기준 크기 */
+  const sc = Math.max(bw / img.naturalWidth, bh / img.naturalHeight);
+  return { x: Math.max(0, img.naturalWidth * sc - bw),
+           y: Math.max(0, img.naturalHeight * sc - bh) };
+}
+function makeFloat(dataURL){
+  const s = slides[current];
+  if(!s) return null;
+  const box = document.createElement('div');
+  box.className = 'float-img' + (cropMode ? ' crop' : '');
+  box.style.left = '660px'; box.style.top = '340px';
+  box.style.width = '600px'; box.style.height = '400px';
+  box.innerHTML = '<img alt="사진"><i class="hd"></i>';
+  box.querySelector('img').src = dataURL;
+  box.style.zIndex = 9999;           /* 일단 맨 위로 보내고 */
+  s.appendChild(box);
+  renumberFloats(s);                 /* 3,4,5… 로 다시 매긴다. 새 사진이 맨 앞이 된다 */
+  wireFloat(box);
+  selectFloat(box);
+  return box;
+}
+function wireFloat(box){
+  if(box._wired) return;
+  box._wired = true;
+  const free = box.classList.contains('float-img');
+  const isBg = box.classList.contains('bg-photo');
+  let hd = box.querySelector(':scope > .hd');
+  if(!hd && !isBg){                       /* 본문 사진에도 크기 손잡이를 달아 준다 (명세 8-5 사진판) */
+    hd = document.createElement('i');
+    hd.className = 'hd';
+    box.appendChild(hd);
+  }
+
+  box.addEventListener('mousedown', e => {
+    if(!editing || e.target === hd) return;
+    e.preventDefault(); e.stopPropagation();
+    window._photoDrag = true;
+    selectFloat(box);
+    /* 본문·배경 사진은 자리가 레이아웃에 매여 있으므로 끌어서 옮기지 않는다.
+       자르기(틀 안에서 사진만 움직이기)는 어느 사진에서든 된다. */
+    if(!free && !cropMode) return;
+    pushUndo();
+    const k = stageScale(), sx = e.clientX, sy = e.clientY;
+
+    if(cropMode){
+      /* 자르기 — 틀은 그대로 두고 사진만 틀 안에서 움직인다.
+         예전에는 마우스 이동량에 0.12 를 곱해서, 200px 을 끌면 사진이 37%나 튀었다.
+         이제는 '잘려 나간 여유(px)' 로 나눠서 손이 간 만큼만 사진이 따라온다. */
+      const room = cropRoom(box);
+      if(room.x < 1 && room.y < 1){
+        photoMsg('이 사진은 틀에 딱 맞아 <b>자를 여유가 없습니다.</b> 틀을 좁히거나 더 큰 사진을 쓰세요.');
+        return;
+      }
+      const px0 = parseFloat(box.style.getPropertyValue('--px')) || 50;
+      const py0 = parseFloat(box.style.getPropertyValue('--py')) || 50;
+      const mv = ev => {
+        const dx = (ev.clientX - sx) / k, dy = (ev.clientY - sy) / k;
+        if(room.x >= 1)
+          box.style.setProperty('--px', Math.max(0, Math.min(100, px0 - dx / room.x * 100)).toFixed(1) + '%');
+        if(room.y >= 1)
+          box.style.setProperty('--py', Math.max(0, Math.min(100, py0 - dy / room.y * 100)).toFixed(1) + '%');
+      };
+      const up = () => { removeEventListener('mousemove', mv); removeEventListener('mouseup', up); };
+      addEventListener('mousemove', mv); addEventListener('mouseup', up);
+      return;
+    }
+
+    const l0 = parseFloat(box.style.left) || 0, t0 = parseFloat(box.style.top) || 0;
+    const mv = ev => {
+      box.style.left = Math.round(l0 + (ev.clientX - sx) / k) + 'px';
+      box.style.top  = Math.round(t0 + (ev.clientY - sy) / k) + 'px';
+    };
+    const up = () => { removeEventListener('mousemove', mv); removeEventListener('mouseup', up); };
+    addEventListener('mousemove', mv); addEventListener('mouseup', up);
+  });
+
+  if(hd) hd.addEventListener('mousedown', e => {
+    if(!editing) return;
+    e.preventDefault(); e.stopPropagation();
+    window._photoDrag = true;
+    selectFloat(box);
+    pushUndo();
+    const k = stageScale(), sx = e.clientX, sy = e.clientY;
+    const r0 = box.getBoundingClientRect();
+    const w0 = parseFloat(box.style.width) || r0.width / k;
+    const h0 = parseFloat(box.style.height) || r0.height / k;
+    if(!free) box.classList.add('sized');   /* flex 에 다시 늘어나지 않게 고정 */
+    const mv = ev => {
+      box.style.width  = Math.max(80, Math.round(w0 + (ev.clientX - sx) / k)) + 'px';
+      box.style.height = Math.max(60, Math.round(h0 + (ev.clientY - sy) / k)) + 'px';
+    };
+    const up = () => { removeEventListener('mousemove', mv); removeEventListener('mouseup', up); };
+    addEventListener('mousemove', mv); addEventListener('mouseup', up);
+  });
+}
+/* 저장했다 다시 연 파일에서도 사진을 고르고 움직일 수 있게 다시 연결한다 */
+function wireAllFloats(){
+  document.querySelectorAll('.float-img,.photo-hero,.bg-photo').forEach(wireFloat);
+}
+
+$('e-crop').onclick = () => {
+  cropMode = !cropMode;
+  $('e-crop').classList.toggle('on', cropMode);
+  document.querySelectorAll('.float-img,.photo-hero,.bg-photo').forEach(x => x.classList.toggle('crop', cropMode));
+  photoMsg(cropMode
+    ? '<b>자르기 켜짐</b> — 사진을 끌면 틀 안에서 사진만 움직입니다. 틀 밖은 잘립니다.'
+    : '자르기를 껐습니다. 이제 끌면 사진이 통째로 옮겨집니다.');
+};
+$('e-floatdel').onclick = () => {
+  if(!selFloat || !selFloat.classList.contains('float-img')){
+    photoMsg('지울 <b>자유 사진</b>을 먼저 누르세요. 본문·배경 사진은 <b>사진 빼기</b>로 뺍니다.');
+    return;
+  }
+  pushUndo();
+  dropCredit(selFloat);
+  selFloat.remove(); selFloat = null;
+  photoMsg('자유 사진을 지웠습니다.');
+};
+
+/* ---------- 자유 사진 쌓는 순서 (요구사항 명세 7-2) ----------
+   z-index 를 직접 적으면 삭제·복제를 거치면서 번호가 듬성듬성해지고 비교가 어긋난다.
+   그래서 늘 '지금 순서대로 3,4,5…' 로 다시 매긴다. 3부터 쓰는 건 배경 사진(0)·본문(1)·
+   기본 자유 사진(3) 위에 얹기 위해서다. */
+function floatsOf(s){
+  const dom = Array.from(s.querySelectorAll(':scope > .float-img'));
+  /* z 값이 같거나 아직 없는 사진은 DOM 순서로 줄을 세운다 — 안 그러면 순서가 들쭉날쭉해진다 */
+  return dom.slice().sort((a,b) => {
+    const za = parseInt(a.style.zIndex,10), zb = parseInt(b.style.zIndex,10);
+    const d = (isNaN(za) ? 3 : za) - (isNaN(zb) ? 3 : zb);
+    return d !== 0 ? d : dom.indexOf(a) - dom.indexOf(b);
+  });
+}
+function renumberFloats(s){
+  floatsOf(s).forEach((el,i) => { el.style.zIndex = 3 + i; });
+}
+function moveFloatZ(dir){
+  if(!selFloat || !selFloat.classList.contains('float-img')){
+    photoMsg('순서를 바꿀 <b>자유 사진</b>을 먼저 누르세요. 본문·배경 사진은 자리가 정해져 있습니다.');
+    return;
+  }
+  const s = selFloat.closest('.slide');
+  const list = floatsOf(s);
+  if(list.length < 2){ photoMsg('이 장에는 자유 사진이 하나뿐이라 순서를 바꿀 것이 없습니다.'); return; }
+  const i = list.indexOf(selFloat), j = i + dir;
+  if(j < 0 || j >= list.length){
+    photoMsg(dir > 0 ? '이미 맨 앞입니다.' : '이미 맨 뒤입니다.');
+    return;
+  }
+  pushUndo();
+  list[i] = list[j]; list[j] = selFloat;
+  list.forEach((el,k) => { el.style.zIndex = 3 + k; });
+  syncFloatZUI();
+  photoMsg('쌓는 순서를 바꿨습니다 — 자유 사진 ' + list.length + '개 중 <b>' + (j+1) + '번째</b>입니다.');
+}
+/* 버튼 옆에 '몇 번째 / 몇 개' 를 적어 준다. 겹쳐 있으면 눈으로는 순서를 알기 어렵다. */
+function syncFloatZUI(){
+  const u = $('e-zup'), d = $('e-zdn');
+  if(!u || !d) return;
+  if(selFloat && !selFloat.isConnected) selFloat = null;
+  if(!selFloat || !selFloat.classList.contains('float-img') || !selFloat.closest('.slide')){
+    u.textContent = '앞으로'; d.textContent = '뒤로'; u.disabled = d.disabled = false;
+    photoZLabel(0, 0); return;
+  }
+  const list = floatsOf(selFloat.closest('.slide'));
+  const i = list.indexOf(selFloat);
+  u.textContent = '앞으로'; d.textContent = '뒤로';
+  u.disabled = i >= list.length - 1;
+  d.disabled = i <= 0;
+  u.style.opacity = u.disabled ? '.4' : '1';
+  d.style.opacity = d.disabled ? '.4' : '1';
+  photoZLabel(i + 1, list.length);
+}
+function photoZLabel(n, total){
+  let el = document.getElementById('e-zinfo');
+  if(!el){
+    el = document.createElement('span');
+    el.id = 'e-zinfo';
+    el.style.cssText = 'margin-left:8px;font-size:11px;color:#8b919c;align-self:center';
+    $('e-zdn').after(el);
+  }
+  el.textContent = total > 1 ? n + ' / ' + total : '';
+}
+$('e-zup').onclick = () => moveFloatZ(+1);
+$('e-zdn').onclick = () => moveFloatZ(-1);
+
+/* ---------- 글자 상자 고르기 · 크기 바꾸기 (요구사항 명세 8-1, 8-5) ----------
+   문제: h2 같은 블록은 글자가 짧아도 상자는 줄 끝까지 늘어나 있다. 그래서 글자가 없는
+   빈 자리를 눌러도 그 문단에 커서가 들어갔다("텍스트 박스가 아닌 부분을 눌러도 잡힌다").
+   해결: 누른 점이 '실제 글자가 그려진 줄상자' 안인지 먼저 본다.
+     - 글자 위 → 예전처럼 커서를 넣는다
+     - 글자 밖 → 커서 대신 그 상자를 '고른다'. 오른쪽 아래 손잡이로 폭을 줄이거나 늘린다. */
+let boxSel = null;
+const tboxHd = document.createElement('i');
+tboxHd.id = 'tbox-hd';
+document.getElementById('deck').appendChild(tboxHd);
+
+function onText(el, x, y){
+  const txt = (el.textContent || '').trim();
+  if(!txt) return true;                       /* 빈 상자는 눌러야 다시 쓸 수 있다 */
+  const r = document.createRange();
+  r.selectNodeContents(el);
+  const pad = 8;
+  return Array.from(r.getClientRects()).some(q =>
+    x >= q.left - pad && x <= q.right + pad && y >= q.top - pad && y <= q.bottom + pad);
+}
+function selectBox(el){
+  if(boxSel && boxSel !== el) boxSel.classList.remove('boxsel');
+  boxSel = el || null;
+  if(el){ el.classList.add('boxsel'); placeTboxHd(); }
+  tboxHd.classList.toggle('on', !!el);
+}
+function placeTboxHd(){
+  if(!boxSel) return;
+  const r = boxSel.getBoundingClientRect();
+  tboxHd.style.left = r.right + 4 + 'px';
+  tboxHd.style.top  = r.bottom + 4 + 'px';
+}
+addEventListener('resize', placeTboxHd);
+
+/* 글자 상자를 끌어서 옮긴다 (요구사항 명세 9-2).
+   자리를 absolute 로 바꾸면 레이아웃이 통째로 무너지므로, 원래 자리는 그대로 두고
+   transform 으로만 밀어 준다. 되돌리기·저장에도 인라인 스타일로 함께 실린다. */
+function boxOffset(el){
+  const m = /translate\((-?[\d.]+)px,\s*(-?[\d.]+)px\)/.exec(el.style.transform || '');
+  return m ? [parseFloat(m[1]), parseFloat(m[2])] : [0, 0];
+}
+
+document.getElementById('deck').addEventListener('mousedown', e => {
+  if(!editing) return;
+  if(e.target === tboxHd) return;
+
+  /* 1) 이미 고른 글자 상자 위를 눌렀다 → 끌면 옮기고, 그냥 누르면 선택을 푼다 */
+  if(boxSel && (boxSel === e.target || boxSel.contains(e.target))){
+    e.preventDefault(); e.stopPropagation();
+    const k = stageScale(), sx = e.clientX, sy = e.clientY;
+    const [x0, y0] = boxOffset(boxSel);
+    const el0 = boxSel;
+    let moved = false;
+    const mv = ev => {
+      const dx = (ev.clientX - sx) / k, dy = (ev.clientY - sy) / k;
+      if(!moved){
+        if(Math.abs(dx) + Math.abs(dy) < 3) return;
+        moved = true;
+        pushUndo();                       /* 실제로 움직이기 시작할 때만 찍는다 */
+      }
+      el0.style.transform = 'translate(' + Math.round(x0 + dx) + 'px, ' + Math.round(y0 + dy) + 'px)';
+      placeTboxHd();
+    };
+    const up = () => {
+      removeEventListener('mousemove', mv); removeEventListener('mouseup', up);
+      if(!moved) selectBox(null);         /* 안 움직였으면 선택만 푼다 (다시 누르면 커서) */
+      else placeTboxHd();
+    };
+    addEventListener('mousemove', mv); addEventListener('mouseup', up);
+    return;
+  }
+
+  const el = e.target.closest && e.target.closest('[contenteditable]');
+  if(!el){
+    selectBox(null);
+    /* 배경 사진은 글 뒤(z-index:0)에 깔려 있어 눌러도 절대 잡히지 않았다.
+       그래서 배경 사진의 투명도·자르기를 쓸 방법이 없었다.
+       사진·글자가 아닌 빈 자리를 누르면 그 장의 배경 사진을 고른 것으로 본다. */
+    if(!e.target.closest('.float-img,.photo-hero,.hd')){
+      const sl = e.target.closest('.slide');
+      const bg = sl && sl.querySelector(':scope > .bg-photo');
+      if(bg){ selectFloat(bg); window._photoDrag = true; }
+    }
+    return;
+  }
+  if(onText(el, e.clientX, e.clientY)){ selectBox(null); return; }   /* 글자 위 → 커서 */
+  e.preventDefault();                       /* 글자 밖 → 커서를 넣지 않고 상자를 고른다 */
+  const a = document.activeElement;
+  if(a && a.blur) a.blur();
+  getSelection().removeAllRanges();
+  selectBox(el);
+}, true);
+
+tboxHd.addEventListener('mousedown', e => {
+  if(!boxSel) return;
+  e.preventDefault(); e.stopPropagation();
+  pushUndo();
+  const k = stageScale(), sx = e.clientX, sy = e.clientY;
+  const r0 = boxSel.getBoundingClientRect();
+  const w0 = parseFloat(boxSel.style.width) || r0.width / k;
+  const h0 = parseFloat(boxSel.style.minHeight) || r0.height / k;
+  const mv = ev => {
+    boxSel.style.width = Math.max(120, Math.round(w0 + (ev.clientX - sx) / k)) + 'px';
+    const dh = (ev.clientY - sy) / k;
+    if(Math.abs(dh) > 6) boxSel.style.minHeight = Math.max(24, Math.round(h0 + dh)) + 'px';
+    placeTboxHd();
+  };
+  const up = () => { removeEventListener('mousemove', mv); removeEventListener('mouseup', up); };
+  addEventListener('mousemove', mv); addEventListener('mouseup', up);
+});
+
+/* ---------- 투명도 ----------
+   슬라이더를 끌면 손을 떼기 전에도 바로 바뀐다. 그러려면 두 가지가 필요하다.
+   (1) 슬라이더를 누르는 순간 글자 선택이 사라지므로, 무대 안 선택을 미리 기억해 둔다.
+   (2) 끄는 동안 매번 새 span 을 씌우면 span 이 겹겹이 쌓이므로,
+       누를 때 딱 한 번 씌우고 그다음엔 그 span 의 값만 바꾼다. */
+
+let lastRange = null;                     /* 무대 안에서 마지막으로 잡은 글자 범위 */
+let optTarget = null, optDragging = false;
+
+document.addEventListener('selectionchange', () => {
+  const sel = getSelection();
+  if(!sel.rangeCount) return;
+  const r = sel.getRangeAt(0);
+  let n = r.commonAncestorContainer;
+  if(n.nodeType === 3) n = n.parentElement;
+  if(!n || !n.closest || !n.closest('#stage')) return;   /* 사이드바 쪽 선택은 무시 */
+  lastRange = r.cloneRange();
+  if(optDragging) return;
+  /* 끌기가 끝난 뒤 늦게 도착하는 selectionchange 가 있다. 그게 방금 씌운 span 을 그대로
+     가리키고 있으면 대상을 버리지 않는다. 버리면 다음 끌기에서 span 이 겹겹이 쌓인다. */
+  if(optTarget && optTarget.nodeType === 1 && optTarget.contains(n)
+     && sel.toString() === optTarget.textContent){ syncTextOpacityUI(); return; }
+  optTarget = null;
+  syncTextOpacityUI();
+});
+
+function textHostOf(range){
+  if(!range) return null;
+  let n = range.commonAncestorContainer;
+  if(n.nodeType === 3) n = n.parentElement;
+  return n && n.closest ? n.closest('[contenteditable]') : null;
+}
+function syncTextOpacityUI(){
+  let n = lastRange && lastRange.commonAncestorContainer;
+  if(n && n.nodeType === 3) n = n.parentElement;
+  const v = n ? Math.round((parseFloat(getComputedStyle(n).opacity) || 1) * 100) : 100;
+  $('e-opt').value = Math.max(20, v); $('e-opt-v').textContent = v + '%';
+}
+/* 끌기 시작할 때 딱 한 번 부른다 — 앞으로 값을 바꿀 대상을 정해서 돌려준다 */
+function beginTextOpacity(){
+  const host = textHostOf(lastRange);
+  if(!host) return null;
+  pushUndo();
+  if(lastRange && !lastRange.collapsed){
+    const sel = getSelection();
+    sel.removeAllRanges(); sel.addRange(lastRange);
+    const sp = document.createElement('span');
+    sp.className = 'opa';
+    try { lastRange.surroundContents(sp); }
+    catch(e){ sp.appendChild(lastRange.extractContents()); lastRange.insertNode(sp); }
+    /* 끌고 나서도 어디가 바뀌는지 보이도록 선택을 그 자리에 다시 걸어 준다 */
+    const back = document.createRange();
+    back.selectNodeContents(sp);
+    sel.removeAllRanges(); sel.addRange(back);
+    lastRange = back.cloneRange();
+    return sp;
+  }
+  return host;                             /* 커서만 있으면 그 문단 전체 */
+}
+['pointerdown','keydown'].forEach(t => $('e-opt').addEventListener(t, () => {
+  if(optDragging) return;
+  optDragging = true;
+  if(!optTarget) optTarget = beginTextOpacity();   /* 이미 정해 뒀으면 다시 씌우지 않는다 */
+  if(!optTarget) photoMsg('투명도를 줄 글자를 먼저 끌어서 선택하거나, 글자를 눌러 커서를 두세요.');
+}));
+['pointerup','pointercancel','keyup','blur'].forEach(t =>
+  $('e-opt').addEventListener(t, () => { optDragging = false; }));
+$('e-opt').addEventListener('input', e => {
+  const v = +e.target.value;
+  $('e-opt-v').textContent = v + '%';
+  if(!optTarget){                          /* 마우스를 안 쓰고 값이 바뀐 경우의 대비책 */
+    optDragging = true;
+    optTarget = beginTextOpacity();
+    if(!optTarget) return;
+  }
+  optTarget.style.opacity = (v / 100).toFixed(2);
+});
+
+/* --- 사진 투명도 ---
+   자유 사진은 사진 자체의 투명도를,
+   배경 사진은 '자동으로 깔리는 막(--veil-a)'의 두께를 조절한다 (요구사항 명세 6-5).
+   100% = 막 없음(사진 그대로), 낮출수록 막이 두꺼워져 사진이 옅어진다. */
+function bgSlideOf(){
+  const cur = slides[current];
+  return (cur && cur.querySelector('.bg-photo')) ? cur : null;
+}
+/* 투명도 슬라이더가 무엇을 건드릴지 한 곳에서 정한다.
+   - 고른 사진이 '배경 사진'이거나 아무것도 안 골랐는데 이 장에 배경 사진이 있으면 → 막 두께
+   - 그 밖에 고른 사진(자유 사진·본문 사진)이 있으면 → 그 사진 자체의 투명도 */
+function opacityTarget(){
+  /* 사진을 뺀 뒤에도 selFloat 이 사라진 노드를 가리키고 있으면
+     getComputedStyle(null) 에서 통째로 죽어 그다음 동작이 전부 먹통이 된다 */
+  if(selFloat && !selFloat.isConnected) selFloat = null;
+  if(selFloat && selFloat.classList.contains('bg-photo')){
+    const sl = selFloat.closest('.slide');
+    if(sl) return { kind:'veil', el: sl };
+  }
+  if(selFloat) return { kind:'photo', el: selFloat };
+  const s = bgSlideOf();
+  if(s) return { kind:'veil', el: s };
+  return { kind:'none', el:null };
+}
+function syncOpacityUI(){
+  const t = opacityTarget();
+  let v = 100;
+  if(t.kind === 'photo')
+    v = Math.round((parseFloat(getComputedStyle(t.el).opacity) || 1) * 100);
+  else if(t.kind === 'veil'){
+    const a = parseFloat(getComputedStyle(t.el).getPropertyValue('--veil-a'));
+    v = Math.round((1 - (isNaN(a) ? 0.9 : a)) * 100);
+  }
+  v = Math.max(0, Math.min(100, v));
+  $('e-opi').value = v; $('e-opi-v').textContent = v + '%';
+}
+let opiDragging = false;
+['pointerdown','keydown'].forEach(t => $('e-opi').addEventListener(t, () => {
+  if(!opiDragging){ opiDragging = true; pushUndo(); }
+}));
+['pointerup','pointercancel','keyup','blur'].forEach(t =>
+  $('e-opi').addEventListener(t, () => { opiDragging = false; }));
+$('e-opi').addEventListener('input', e => {
+  const v = +e.target.value;
+  $('e-opi-v').textContent = v + '%';
+  const t = opacityTarget();
+  if(t.kind === 'photo'){ t.el.style.opacity = (v / 100).toFixed(2); return; }
+  if(t.kind === 'veil'){ t.el.style.setProperty('--veil-a', (1 - v / 100).toFixed(2)); return; }
+  photoMsg('투명도를 줄 사진이 없습니다. <b>사진을 눌러 고른 뒤</b> 슬라이더를 움직이세요.');
+});
+
+$('e-search').onclick = () => { const q = $('e-q').value.trim(); if(q) searchPhotos(q); };
+$('e-q').addEventListener('keydown', e => { if(e.key === 'Enter'){ e.preventDefault();
+  const q = e.target.value.trim(); if(q) searchPhotos(q); } });
+
+document.addEventListener('input', e => {
+  const t = e.target;
+  if(t.closest && t.closest('.chart') && t.closest('.bar')) rescaleChart(t.closest('.chart'));
+  if(t.isContentEditable) noteTyping();
+});
+document.addEventListener('beforeinput', e => {
+  /* 한 뭉치의 첫 타자를 치기 '직전' 상태를 찍어 둔다 (되돌리기가 필요한 건 바뀌기 전이다) */
+  if(!e.target.isContentEditable) return;
+  if(!typing || burstBreaks(e)){ pushUndo(); burstLen = 0; burstHost = e.target; }
+  burstLen++;
+  noteTyping();
+}, true);
+
+addEventListener('keydown', e => {
+  /* 편집 중에도 PageUp/PageDown 으로는 장을 넘길 수 있게 한다 */
+  if(editing && (e.key === 'PageUp' || e.key === 'PageDown')){
+    e.preventDefault();
+    const n = current + (e.key === 'PageDown' ? 1 : -1);
+    if(n >= 0 && n < slides.length){ show(n); refreshUI(); }
+    return;
+  }
+  if(e.key.toLowerCase() !== 'e') return;
+  if(e.target.isContentEditable || /^(INPUT|TEXTAREA)$/.test(e.target.tagName)) return;
+  e.preventDefault();
+  setEditing(!editing);
+});
+
+})();
+</script>
+</body>
+</html>
