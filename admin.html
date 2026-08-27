@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="ko" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>관리 — 문혁재</title>
+<meta name="description" content="글과 프로젝트를 쓰는 곳. 사이트 주인만 씁니다.">
+<meta name="robots" content="noindex, nofollow">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#101114">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+<link rel="stylesheet" href="assets/css/site.css">
+<script src="assets/js/config.js" defer></script>
+<script src="assets/js/content.js" defer></script>
+<script src="assets/js/site.js" defer></script>
+<script src="assets/js/admin.js" defer></script>
+</head>
+<body>
+<a class="skip" href="#main">본문으로 건너뛰기</a>
+
+<header class="nav">
+  <div class="wrap wrap-wide nav-in">
+    <a class="brand" href="index.html">문혁재<span class="brand-sub">관리</span></a>
+    <nav class="nav-links" aria-label="주요">
+      <a href="index.html">홈</a>
+      <a href="projects/index.html">프로젝트</a>
+      <a href="blog/index.html">글</a>
+      <button type="button" class="mini" data-theme-toggle aria-pressed="true">라이트</button>
+    </nav>
+  </div>
+</header>
+
+<main id="main" class="wrap wrap-wide">
+
+  <!-- ── 잠금 화면 ── -->
+  <section class="admin-gate" id="gate">
+    <p class="eyebrow">사이트 주인만</p>
+    <h1 class="h-page" style="margin:12px 0 16px">들어가기</h1>
+    <p class="lead" style="font-size:17px">
+      이 사이트에는 서버가 없습니다. 그래서 로그인 대신 <b>내 GitHub 토큰</b>으로 저장소에 직접 씁니다.
+      토큰은 <b>이 브라우저에만</b> 저장되고 어디로도 전송되지 않습니다(GitHub 외).
+    </p>
+
+    <form class="form" id="gate-form">
+      <div class="field">
+        <label for="g-repo">저장소</label>
+        <input type="text" id="g-repo" name="repo" placeholder="계정명/저장소이름" autocomplete="off" spellcheck="false" required>
+        <span class="hint">예: hyukjae/my-site</span>
+      </div>
+      <div class="field">
+        <label for="g-branch">브랜치</label>
+        <input type="text" id="g-branch" name="branch" value="main" autocomplete="off" spellcheck="false">
+      </div>
+      <div class="field">
+        <label for="g-token">GitHub 토큰</label>
+        <input type="password" id="g-token" name="token" autocomplete="off" spellcheck="false" required>
+        <span class="hint">
+          GitHub → Settings → Developer settings → <b>Fine-grained tokens</b> →
+          이 저장소 하나만 고르고 <b>Contents: Read and write</b> 권한만 주세요.
+        </span>
+      </div>
+      <div class="form-foot">
+        <button type="submit" class="btn btn-1" id="g-send">확인하고 들어가기</button>
+        <span class="status" id="g-status" role="status"></span>
+      </div>
+    </form>
+
+    <div class="warn" style="margin-top:28px">
+      <b>알아 두실 것</b>
+      토큰은 이 브라우저의 저장 공간에 그대로 들어 있습니다. <b>공용 컴퓨터에서는 쓰지 마세요.</b>
+      권한을 이 저장소 하나로 좁혀 두면, 혹시 새더라도 피해가 이 사이트 안에서 끝납니다.
+      다 쓰고 나서 <b>토큰 지우기</b>를 누르면 브라우저에서 지워집니다.
+    </div>
+  </section>
+
+  <!-- ── 작업 화면 ── -->
+  <section id="work" hidden>
+    <header class="page-head">
+      <p class="eyebrow">관리</p>
+      <h1 class="h-page">쓰기</h1>
+      <div class="admin-bar">
+        <span class="who" id="who"></span>
+        <button type="button" class="mini" id="btn-logout">토큰 지우기</button>
+      </div>
+    </header>
+
+    <div class="tabs" role="tablist">
+      <button type="button" role="tab" aria-selected="true"  aria-controls="pane-post"    id="tab-post">새 글</button>
+      <button type="button" role="tab" aria-selected="false" aria-controls="pane-project" id="tab-project">새 프로젝트</button>
+      <button type="button" role="tab" aria-selected="false" aria-controls="pane-private" id="tab-private">비공개 일기</button>
+      <button type="button" role="tab" aria-selected="false" aria-controls="pane-help"    id="tab-help">도움말</button>
+    </div>
+
+    <!-- 새 글 -->
+    <div class="tabpane" id="pane-post" role="tabpanel" aria-labelledby="tab-post">
+      <form class="form" id="post-form">
+        <div class="two">
+          <div class="field">
+            <label for="p-title">제목</label>
+            <input type="text" id="p-title" name="title" required maxlength="120">
+          </div>
+          <div class="field">
+            <label for="p-date">날짜</label>
+            <input type="date" id="p-date" name="date" required>
+          </div>
+        </div>
+        <div class="field">
+          <label for="p-slug">주소에 쓸 이름 <span class="hint">(영문·숫자·한글·하이픈)</span></label>
+          <input type="text" id="p-slug" name="slug" required spellcheck="false" autocomplete="off">
+        </div>
+        <div class="field">
+          <label for="p-summary">한 줄 요약 <span class="hint">(목록에 보입니다)</span></label>
+          <input type="text" id="p-summary" name="summary" maxlength="200">
+        </div>
+        <div class="field">
+          <label for="p-tags">꼬리표 <span class="hint">(쉼표로 구분)</span></label>
+          <input type="text" id="p-tags" name="tags" placeholder="기록, 회고">
+        </div>
+        <div class="field">
+          <span class="flabel" id="lbl-vis">공개 범위</span>
+          <div class="radios" role="radiogroup" aria-labelledby="lbl-vis">
+            <label><input type="radio" name="vis" value="public" checked> 공개 — 사이트에 올립니다</label>
+            <label><input type="radio" name="vis" value="private"> 비공개 — 이 브라우저에만 둡니다</label>
+          </div>
+          <span class="hint" id="vis-hint">
+            비공개를 고르면 저장소에 <b>올라가지 않습니다.</b> 정적 사이트에 올린 글은 주소만 알면 누구나
+            볼 수 있기 때문에, 진짜 비공개는 "올리지 않는 것"뿐입니다.
+          </span>
+        </div>
+        <div class="field">
+          <label for="p-body">본문 <span class="hint">(마크다운: ## 제목, **굵게**, - 목록, &gt; 인용, ``` 코드)</span></label>
+          <textarea id="p-body" name="body" class="tall" required></textarea>
+        </div>
+        <div class="form-foot">
+          <button type="submit" class="btn btn-1" id="p-save">저장</button>
+          <button type="button" class="btn" id="p-preview">미리보기</button>
+          <button type="button" class="btn" id="p-download">.md 내려받기</button>
+          <span class="status" id="p-status" role="status"></span>
+        </div>
+      </form>
+      <div id="p-preview-box" hidden>
+        <p class="cap">미리보기</p>
+        <div class="prose" id="p-preview-out"></div>
+      </div>
+    </div>
+
+    <!-- 새 프로젝트 -->
+    <div class="tabpane" id="pane-project" role="tabpanel" aria-labelledby="tab-project" hidden>
+      <form class="form" id="proj-form">
+        <div class="two">
+          <div class="field">
+            <label for="j-title">제목</label>
+            <input type="text" id="j-title" name="title" required maxlength="140">
+          </div>
+          <div class="field">
+            <label for="j-date">날짜</label>
+            <input type="date" id="j-date" name="date" required>
+          </div>
+        </div>
+        <div class="two">
+          <div class="field">
+            <label for="j-slug">주소에 쓸 이름</label>
+            <input type="text" id="j-slug" name="slug" required spellcheck="false" autocomplete="off">
+          </div>
+          <div class="field">
+            <label for="j-status">상태 <span class="hint">(목록 오른쪽에 보입니다)</span></label>
+            <input type="text" id="j-status" name="status" placeholder="만드는 중 / 마무리함" maxlength="30">
+          </div>
+        </div>
+        <div class="field">
+          <label for="j-summary">요약 <span class="hint">(목록에 보입니다)</span></label>
+          <textarea id="j-summary" name="summary" maxlength="400"></textarea>
+        </div>
+        <div class="field">
+          <label for="j-tags">꼬리표 <span class="hint">(쉼표로 구분)</span></label>
+          <input type="text" id="j-tags" name="tags" placeholder="Claude 스킬, 자동 검사">
+        </div>
+        <div class="field">
+          <label for="j-body">본문 <span class="hint">무엇을 하는지 · 언제 쓰는지 · 어떤 결정을 했는지 · 아직 못 고친 것</span></label>
+          <textarea id="j-body" name="body" class="tall" required></textarea>
+        </div>
+        <div class="form-foot">
+          <button type="submit" class="btn btn-1" id="j-save">저장</button>
+          <button type="button" class="btn" id="j-preview">미리보기</button>
+          <button type="button" class="btn" id="j-template">뼈대 넣기</button>
+          <span class="status" id="j-status-msg" role="status"></span>
+        </div>
+      </form>
+      <div id="j-preview-box" hidden>
+        <p class="cap">미리보기</p>
+        <div class="prose" id="j-preview-out"></div>
+      </div>
+    </div>
+
+    <!-- 비공개 일기 -->
+    <div class="tabpane" id="pane-private" role="tabpanel" aria-labelledby="tab-private" hidden>
+      <p class="sec-sub">
+        이 브라우저에만 있는 글입니다. <b>저장소에 올라가지 않으므로</b> 사이트에서는 보이지 않습니다.
+        브라우저 저장 공간을 비우면 함께 사라지니, 오래 둘 글은 <b>.md 로 내려받아</b> 보관하세요.
+      </p>
+      <div class="rows" id="private-list" style="margin-top:24px"></div>
+      <p class="note" id="private-empty" hidden>아직 비공개 글이 없습니다. "새 글"에서 비공개를 고르고 저장하면 여기에 쌓입니다.</p>
+    </div>
+
+    <!-- 도움말 -->
+    <div class="tabpane" id="pane-help" role="tabpanel" aria-labelledby="tab-help" hidden>
+      <div class="stack-24">
+        <div class="panel">
+          <p class="panel-h">저장하면 무슨 일이 일어나나</p>
+          <p class="row-d">
+            ① 본문을 <code>content/posts/&lt;이름&gt;.md</code> 로 커밋하고
+            ② <code>data/posts.json</code> 목록에 한 줄을 더한 뒤 커밋합니다.
+            GitHub Pages 가 다시 배포하는 데 보통 <b>1~2분</b> 걸립니다.
+          </p>
+        </div>
+        <div class="panel">
+          <p class="panel-h">같은 이름으로 다시 저장하면</p>
+          <p class="row-d">덮어씁니다. 글을 고칠 때는 같은 이름으로 저장하면 됩니다.
+            목록의 제목·요약·꼬리표도 함께 갱신됩니다.</p>
+        </div>
+        <div class="panel">
+          <p class="panel-h">지우려면</p>
+          <p class="row-d">저장소에서 해당 <code>.md</code> 파일을 지우고
+            <code>data/</code> 의 json 에서 그 줄을 빼면 됩니다. (관리 화면에는 아직 삭제 기능이 없습니다)</p>
+        </div>
+        <div class="panel">
+          <p class="panel-h">수정 제안 스프레드시트</p>
+          <p class="row-d">프로젝트 페이지의 제안 폼은 <code>assets/js/config.js</code> 의
+            <code>suggestEndpoint</code> 로 보냅니다. 만드는 방법은 저장소의
+            <code>google-apps-script.gs</code> 맨 위에 적어 뒀습니다.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="foot">
+  <div class="wrap wrap-wide foot-meta">
+    <p><b>문혁재</b> · 관리 화면</p>
+    <p class="foot-links"><a class="link" href="index.html">홈</a><a class="link" href="about.html">소개</a></p>
+  </div>
+</footer>
+</body>
+</html>

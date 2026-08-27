@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="ko" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>소개 — 문혁재</title>
+<meta name="description" content="문혁재 — AI 도구로 실무에서 쓰는 것을 만듭니다. 이 사이트를 무엇으로 어떻게 만들었는지도 적어 뒀습니다.">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#101114">
+<meta property="og:type" content="profile">
+<meta property="og:title" content="소개 — 문혁재">
+<meta property="og:locale" content="ko_KR">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+<link rel="stylesheet" href="assets/css/site.css">
+<script src="assets/js/config.js" defer></script>
+<script src="assets/js/content.js" defer></script>
+<script src="assets/js/site.js" defer></script>
+</head>
+<body>
+<a class="skip" href="#main">본문으로 건너뛰기</a>
+
+<header class="nav">
+  <div class="wrap wrap-wide nav-in">
+    <a class="brand" href="index.html">문혁재<span class="brand-sub">만든 것과 생각</span></a>
+    <nav class="nav-links" aria-label="주요">
+      <a href="index.html">홈</a>
+      <a href="projects/index.html">프로젝트</a>
+      <a href="blog/index.html">글</a>
+      <a href="about.html" aria-current="page">소개</a>
+      <button type="button" class="mini" data-theme-toggle aria-pressed="true">라이트</button>
+    </nav>
+  </div>
+</header>
+
+<main id="main" class="wrap">
+
+  <header class="page-head">
+    <p class="eyebrow">소개</p>
+    <h1 class="h-page">문혁재</h1>
+    <p class="lead">
+      AI 도구로 <b>실무에서 실제로 쓰는 것</b>을 만듭니다.
+      더큰내일교육센터 AI 취업역량강화 과정을 듣고 있고,
+      배운 것을 그때그때 도구로 만들어 써 보는 중입니다.
+    </p>
+  </header>
+
+  <section class="sec reveal">
+    <p class="sec-n">01</p>
+    <h2 class="sec-h">어떻게 만드는 편인가</h2>
+    <div class="stack-24" style="margin-top:24px">
+      <div class="panel">
+        <p class="panel-h">규칙을 먼저 정하고, 지켰는지 확인할 방법까지 만든다</p>
+        <p class="row-d">문서에 "이렇게 합시다"를 적어 두는 것만으로는 매번 흔들립니다.
+          그래서 규칙을 적을 때 <b>그 규칙을 지켰는지 볼 방법</b>을 같이 만듭니다.
+          Slides-in-Html 의 자동 검사 일곱 가지가 그렇게 나왔습니다.</p>
+      </div>
+      <div class="panel">
+        <p class="panel-h">못 고친 것을 숨기지 않는다</p>
+        <p class="row-d">완성했다고 말하는 것보다 <b>어디까지 됐는지</b> 정확히 말하는 쪽이
+          결국 더 쓸모 있었습니다. 프로젝트마다 "아직 못 고친 것"을 따로 적어 둡니다.</p>
+      </div>
+      <div class="panel">
+        <p class="panel-h">쓰다가 막힌 자리에서 고친다</p>
+        <p class="row-d">기능을 미리 설계해서 넣기보다, 직접 쓰다가 막힌 자리를 하나씩 메웁니다.
+          그래서 변화 이력의 대부분이 "쓰다 보니 필요해서"입니다.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec reveal">
+    <p class="sec-n">02</p>
+    <h2 class="sec-h">이 사이트는 이렇게 만들었습니다</h2>
+    <p class="sec-sub">직접 만든 정적 사이트입니다. 프레임워크도, 빌드 과정도, 추적 스크립트도 없습니다.</p>
+    <ul class="rows" style="margin-top:24px">
+      <li class="row">
+        <p class="row-t">HTML · CSS · JavaScript 뿐</p>
+        <p class="row-d">React 같은 프레임워크를 쓰지 않았습니다. CSS 한 개, JS 몇 개, 이미지 없음.
+          마크다운 변환기도 <b>외부 라이브러리 없이</b> 직접 짧게 만들었습니다.</p>
+      </li>
+      <li class="row">
+        <p class="row-t">JS 없이도 읽힙니다</p>
+        <p class="row-d">본문은 HTML 과 마크다운에 그대로 있고, 자바스크립트는 필터·발표 모드·목록 그리기만 합니다.</p>
+      </li>
+      <li class="row">
+        <p class="row-t">색을 지어내지 않았습니다</p>
+        <p class="row-d">브랜드 색이 없으므로 <b>무채색</b>으로 만들었습니다.
+          Slides-in-Html 스킬이 정해 둔 규칙("브랜드 색을 모르면 무채색")을 사이트에도 그대로 적용한 것입니다.
+          프로젝트 페이지 맨 아래에서 이 페이지 자신의 명도 대비를 실제로 계산해 보여 줍니다.</p>
+      </li>
+      <li class="row">
+        <p class="row-t">글은 사이트 안에서 씁니다</p>
+        <p class="row-d">관리자 화면에서 글과 프로젝트를 쓰면 저장소에 바로 저장됩니다.
+          서버가 없으므로 로그인은 <b>내 GitHub 토큰</b>으로 대신합니다 — 그 토큰은 제 브라우저에만 있습니다.</p>
+      </li>
+    </ul>
+    <p class="body">
+      무엇을 참고했고 무엇을 버렸는지는 <a class="link" href="DESIGN.md">DESIGN.md</a> 에 전부 적어 뒀습니다.
+    </p>
+  </section>
+
+  <section class="sec reveal">
+    <p class="sec-n">03</p>
+    <h2 class="sec-h">연락</h2>
+    <p class="sec-sub">고칠 것이 보이면 프로젝트 페이지의 제안 창을 써 주셔도 되고, 메일도 좋습니다.</p>
+    <div class="cta" style="margin-top:24px">
+      <a class="btn btn-1" href="mailto:jejuharry123@gmail.com">메일 보내기</a>
+      <a class="btn" href="projects/index.html">프로젝트 보기</a>
+      <a class="btn" href="blog/index.html">글 보기</a>
+    </div>
+  </section>
+
+</main>
+
+<footer class="foot">
+  <div class="wrap wrap-wide foot-meta">
+    <p><b>문혁재</b> · 더큰내일교육센터 AI 취업역량강화 과정</p>
+    <p class="foot-credit">
+      이 사이트의 시각 언어(무채색 · 머리카락 선 · 좁은 본문 단 · 짧은 전이 · 커서에 반응하는 무대)는
+      <a class="link" href="https://www.nafisazizir.com/" target="_blank" rel="noopener noreferrer">nafisazizir.com</a>
+      의 설계 원리를 참고해 다시 구성한 것입니다. 문구·이미지·화면 구성은 옮기지 않았습니다.
+    </p>
+    <p class="foot-links">
+      <a class="link" href="index.html">홈</a>
+      <a class="link" href="DESIGN.md">DESIGN.md</a>
+      <a class="link" href="admin.html">관리</a>
+    </p>
+  </div>
+</footer>
+</body>
+</html>
