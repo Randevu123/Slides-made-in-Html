@@ -40,19 +40,26 @@
     });
   })();
 
-  /* ---------- 2. 덱 지연 로딩 ---------- */
+ /* ---------- 2. 덱 지연 로딩 ---------- */
   (function () {
-    var btn = $('#deck-play'), box = $('#deck-frame');
-    if (!btn || !box) return;
-    btn.addEventListener('click', function () {
-      var f = document.createElement('iframe');
-      f.src = box.getAttribute('data-src');
-      f.title = box.getAttribute('data-title') || '발표 자료';
-      f.setAttribute('loading', 'lazy');
-      f.setAttribute('allowfullscreen', '');
-      box.innerHTML = '';
-      box.appendChild(f);
-      f.focus();
+    // 페이지 내의 모든 .deck-frame 요소를 찾습니다.
+    var frames = $$('.deck-frame');
+    if (!frames.length) return;
+
+    frames.forEach(function (box) {
+      // 현재 프레임 안의 재생 버튼만 찾습니다.
+      var btn = box.querySelector('.deck-play');
+      if (!btn) return;
+
+      btn.addEventListener('click', function () {
+        var f = document.createElement('iframe');
+        f.src = box.getAttribute('data-src');
+        f.title = box.getAttribute('data-title') || '발표 자료';
+        f.setAttribute('loading', 'lazy');
+        f.setAttribute('allowfullscreen', '');
+        box.innerHTML = '';
+        box.appendChild(f);
+        f.focus();
+      });
     });
   })();
-})();
