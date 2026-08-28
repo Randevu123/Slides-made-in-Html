@@ -319,7 +319,40 @@ citations(출처 누락): []</code></pre>
       </span>
     </figcaption>
   </figure>
+기존 코드를 그대로 복사한 뒤, 파일 경로, 텍스트 정보, 그리고 id 속성을 새 파일에 맞게 수정하여 기존 코드 아래에 붙여넣으면 됩니다.
 
+특히 HTML에서 id 값은 한 페이지 내에서 고유해야 합니다. 기존과 똑같이 id="deck-frame"을 쓰면 자바스크립트가 첫 번째 슬라이드만 인식하여 두 번째 미리보기가 작동하지 않을 수 있습니다. 참고: MDN Web Docs - id 속성
+
+아래 수정된 코드를 참고하여 적용하시기 바랍니다.
+
+HTML
+<!-- 첫 번째 슬라이드 코드 끝난 바로 아래에 추가 -->
+<figure class="deck">
+  <!-- 1. id 변경 (예: deck-frame-2) -->
+  <!-- 2. data-src에 새 HTML 파일 경로 입력 -->
+  <!-- 3. data-title에 새 제목 입력 -->
+  <div class="deck-frame bleed" id="deck-frame-2"
+       data-src="../deck/OITA-APU Asia-Pacific University e-Sports League 2026 開催企画書, 2026-08-28.html"
+       data-title="OITA-APU Asia-Pacific University e-Sports League 2026 開催企画書, 2026-08-28">
+    
+    <!-- 4. id 변경 (예: deck-play-2) -->
+    <!-- 5. aria-label 설명 수정 -->
+    <button type="button" class="deck-play" id="deck-play-2"
+            aria-label="발표 자료 재생 — OITA-APU Asia-Pacific University e-Sports League 2026 開催企画書, 2026-08-28, 23장">
+      <span class="deck-play-t">발표 자료 열기</span>
+      <!-- 6. 장수, 용량 등 새 파일 정보에 맞게 수정 -->
+      <span class="deck-play-d">23장 · 1920×1080 · 868KB · 누르면 이 자리에서 재생된다</span>
+    </button>
+  </div>
+  <figcaption class="deck-cap">
+    <!-- 7. 하단 캡션 제목 및 날짜 수정 -->
+    <span>「OITA-APU Asia-Pacific University e-Sports League 2026 開催企画書」 2026-08-28 — OITA-APU Asia-Pacific University e-Sports League 2026 開催企画書, 2026-08-28.HTML</span>
+    <span class="deck-links">
+      <!-- 8. 새 탭 열기 a 태그의 href에 새 HTML 파일 경로 입력 -->
+      <a href="../deck/OITA-APU Asia-Pacific University e-Sports League 2026 開催企画書, 2026-08-28.html" target="_blank" rel="noopener">새 탭에서 열기 →</a>
+    </span>
+  </figcaption>
+</figure>
   <div class="two">
     <div class="panel">
       <p class="panel-h">발표 중 조작</p>
