@@ -319,13 +319,32 @@ citations(출처 누락): []</code></pre>
       </span>
     </figcaption>
   </figure>
-기존 코드를 그대로 복사한 뒤, 파일 경로, 텍스트 정보, 그리고 id 속성을 새 파일에 맞게 수정하여 기존 코드 아래에 붙여넣으면 됩니다.
+  <div class="two">
+    <div class="panel">
+      <p class="panel-h">발표 중 조작</p>
+      <ul class="keys">
+        <li><kbd>→</kbd> <kbd>Space</kbd> 다음 단계 → 다음 슬라이드</li>
+        <li><kbd>←</kbd> 이전</li>
+        <li><kbd>F</kbd> 전체화면</li>
+        <li><kbd>P</kbd> 인쇄 → PDF 저장 (16:9 용지)</li>
+        <li><kbd>E</kbd> 편집 모드 켜기 / 끄기</li>
+        <li>오른쪽 아래 ▦ 버튼 — 슬라이드 목록 드롭다운</li>
+      </ul>
+      <p class="note">PDF로 저장할 때는 인쇄 창에서 <b>「배경 그래픽」</b>을 켜야 배경 사진과 색면이 함께 나옵니다.</p>
+    </div>
+    <div class="panel">
+      <p class="panel-h">덱의 구성 — 13분</p>
+      <ol class="steps">
+        <li><span class="step-n">1</span><span>왜 PPTX를 안 쓰나 <em>3분</em></span></li>
+        <li><span class="step-n">2</span><span>무엇을 자동화했나 <em>6분</em></span></li>
+        <li><span class="step-n">3</span><span>만드는 순서 <em>4분</em></span></li>
+      </ol>
+      <p class="note">표지 → 목차 → 본론(2단 기본 + 예외 4유형) → 마무리.
+        스킬이 정해 둔 뼈대를 그대로 따랐습니다.</p>
+    </div>
+  </div>
 
-특히 HTML에서 id 값은 한 페이지 내에서 고유해야 합니다. 기존과 똑같이 id="deck-frame"을 쓰면 자바스크립트가 첫 번째 슬라이드만 인식하여 두 번째 미리보기가 작동하지 않을 수 있습니다. 참고: MDN Web Docs - id 속성
-
-아래 수정된 코드를 참고하여 적용하시기 바랍니다.
-
-HTML
+  
 <!-- 첫 번째 슬라이드 코드 끝난 바로 아래에 추가 -->
 <figure class="deck">
   <!-- 1. id 변경 (예: deck-frame-2) -->
@@ -353,30 +372,7 @@ HTML
     </span>
   </figcaption>
 </figure>
-  <div class="two">
-    <div class="panel">
-      <p class="panel-h">발표 중 조작</p>
-      <ul class="keys">
-        <li><kbd>→</kbd> <kbd>Space</kbd> 다음 단계 → 다음 슬라이드</li>
-        <li><kbd>←</kbd> 이전</li>
-        <li><kbd>F</kbd> 전체화면</li>
-        <li><kbd>P</kbd> 인쇄 → PDF 저장 (16:9 용지)</li>
-        <li><kbd>E</kbd> 편집 모드 켜기 / 끄기</li>
-        <li>오른쪽 아래 ▦ 버튼 — 슬라이드 목록 드롭다운</li>
-      </ul>
-      <p class="note">PDF로 저장할 때는 인쇄 창에서 <b>「배경 그래픽」</b>을 켜야 배경 사진과 색면이 함께 나옵니다.</p>
-    </div>
-    <div class="panel">
-      <p class="panel-h">덱의 구성 — 13분</p>
-      <ol class="steps">
-        <li><span class="step-n">1</span><span>왜 PPTX를 안 쓰나 <em>3분</em></span></li>
-        <li><span class="step-n">2</span><span>무엇을 자동화했나 <em>6분</em></span></li>
-        <li><span class="step-n">3</span><span>만드는 순서 <em>4분</em></span></li>
-      </ol>
-      <p class="note">표지 → 목차 → 본론(2단 기본 + 예외 4유형) → 마무리.
-        스킬이 정해 둔 뼈대를 그대로 따랐습니다.</p>
-    </div>
-  </div>
+  
 </section>
 
 <section class="sec wrap reveal" id="s06" aria-labelledby="h06">
