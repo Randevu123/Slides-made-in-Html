@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Slides-in-Html — 규칙을 기계가 검사하게 만든 슬라이드 스킬</title>
+<title>Slides-in-Html — 기본적인 디자인 규칙을 기계가 검사하게 만든 슬라이드 스킬</title>
 <meta name="description" content="PPTX의 폰트 깨짐을 없앤 단일 HTML 슬라이드 스킬의 제작 기록. 결정 66건, 자동 검사 7종, 아직 남은 문제 13건까지 그대로 공개한다.">
 <meta name="author" content="문혁재">
 <meta name="color-scheme" content="dark light">
@@ -44,7 +44,7 @@
     <p class="eyebrow">프로젝트 · 만드는 중 · 2026.08</p>
     <h1 class="h-page">디자인 규칙을 문서로 적어 두는 대신,<br><em>지켰는지 기계가 검사하게</em> 만들었다.</h1>
     <p class="lead">
-      PPTX의 폰트 깨짐을 없앤 <b>단일 HTML 슬라이드 스킬</b>입니다.
+      디자인을 어려워하는 사람들을 위해 딱 보았을때 가독성이 떨어지지 않는 기본적인 슬라이드를 만드는 <b>단일 HTML 슬라이드 스킬</b>입니다.
       무엇을 할 수 있는지, 어떤 판단을 거쳐 지금 모습이 됐는지,
       그리고 <b>아직 못 고친 것은 무엇인지</b>까지 그대로 적어 뒀습니다.
     </p>
@@ -83,8 +83,7 @@
 
   <blockquote class="quote">
     <p>자주 쓰는 슬라이드 생성 스킬을 만들까 하고 있어. 그 스킬 안에 PPTX에서 할 수 있는 거는
-    전부 넣을 수 있게 하고 싶어. 그리고 사람들이 평소에 pptx에서 불편하게 느끼는 부분들을 개선한
-    단일 html 파일을 만드는 스킬을 만들고 싶은데 어떨까</p>
+    전부 넣을 수 있게 하고 싶어. 디자인 감각이 부족한 사람들도 쉽게 쓸 수 있는 슬라이드들을 만드는 스킬을 만들고 싶은데 어떨까</p>
     <cite>「아이디어 빌딩」 메모, 2026-08-27 — 이 프로젝트의 첫 문장</cite>
   </blockquote>
 
@@ -173,13 +172,13 @@ SKILL.md            AI가 읽고 따르는 작업 절차</code></pre>
 <section class="sec wrap reveal" id="s03" aria-labelledby="h03">
 <p class="sec-n">03</p>
   <h2 id="h03" class="sec-h">언제 쓰고, 언제 쓰지 않나</h2>
-  <p class="sec-sub">스킬은 아무 때나 켜지면 방해가 된다. 켜질 자리를 좁게 적어 뒀다.</p>
+  <p class="sec-sub">스킬은 아무 때나 켜지면 방해가 될것 같아, 켜질 자리를 좁게 적어 뒀다.</p>
 
   <div class="two">
     <div class="panel">
-      <p class="panel-h">이럴 때 쓴다</p>
+      <p class="panel-h">이럴 때 쓰면 좋지 않을까...?</p>
       <ul class="tick">
-        <li>제안서 · 회사소개 · 영업덱 · 주간보고 같은 <b>대외 발표 자료</b></li>
+        <li>제안서 · 회사소개 · 영업덱 · 주간보고 같은 <b>대외 발표 자료</b>의 기본 초안</li>
         <li>화면에 띄우거나 <b>화면 공유로 보여줄</b> 자료</li>
         <li>받는 사람의 <b>기기·OS를 모를 때</b></li>
         <li>보고서 · 기획안 · 발표 대본이 이미 있고, 그걸 슬라이드로 옮길 때</li>
@@ -187,19 +186,18 @@ SKILL.md            AI가 읽고 따르는 작업 절차</code></pre>
       </ul>
     </div>
     <div class="panel">
-      <p class="panel-h">이럴 때는 쓰지 않는다</p>
+      <p class="panel-h">이럴 때는 쓰지 않는게...</p>
       <ul class="tick tick-x">
         <li>진짜 <code>.pptx</code> 파일 자체가 필요할 때 → <b>pptx 스킬</b></li>
         <li>A4로 인쇄할 문서일 때 → <b>문서 스킬</b></li>
         <li>애니메이션 · 영상이 필요할 때 → <b>지원하지 않는다</b> (모션은 페이드인 하나뿐)</li>
-        <li>수업·강의처럼 코드 하이라이팅과 실습 화면이 필요할 때 → <b>수업용 슬라이드 스킬</b></li>
       </ul>
     </div>
   </div>
 
-  <p class="cap">이렇게 말하면 켜진다</p>
+  <p class="cap">이렇게 말하면 켜지게 하고 있다.</p>
   <ul class="chips">
-    <li>발표 슬라이드 만들어줘</li>
+    <li>발표 슬라이드 디자인 초안을 만들어줘</li>
     <li>제안서를 슬라이드로</li>
     <li>영업덱 만들어줘</li>
     <li>주간보고 슬라이드</li>
