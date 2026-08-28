@@ -6,7 +6,7 @@
 window.SITE = {
   /* 저장소 — 관리자 화면이 글·프로젝트를 커밋할 곳.
      "계정명/저장소이름" 형식. 관리자 화면에서도 바꿀 수 있다. */
-  repo: 'Randevu123/storage',
+  repo: 'Randevu123/Slides-made-in-Html',
   branch: 'main',
 
   /* 수정 제안 폼이 보낼 곳 — Google Apps Script 웹앱 URL.

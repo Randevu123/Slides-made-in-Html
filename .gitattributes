@@ -1,0 +1,9 @@
+# 줄바꿈은 저장소 안에서 항상 LF 로 통일한다.
+# (윈도우에서 올리고 내릴 때 파일 전체가 바뀐 것처럼 보이는 것을 막는다)
+* text=auto eol=lf
+
+# 아래는 바이트 그대로 다룬다
+*.png binary
+*.jpg binary
+*.svg text eol=lf
+*.skill binary
