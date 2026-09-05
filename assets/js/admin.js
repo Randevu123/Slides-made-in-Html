@@ -112,6 +112,63 @@
       });
   }
 
+  /* 글이 아닌 파일(.skill, 이미지 등)도 올릴 수 있게 바이트를 그대로 base64 로.
+     btoa 에 한 번에 다 넘기면 파일이 클 때 터지므로 조각내서 넘긴다. */
+  function b64bytes(buf) {
+    var bytes = new Uint8Array(buf), bin = '', CH = 0x8000;
+    for (var i = 0; i < bytes.length; i += CH) {
+      bin += String.fromCharCode.apply(null, bytes.subarray(i, i + CH));
+    }
+    return btoa(bin);
+  }
+
+  function putRaw(path, base64, message, sha) {
+    var body = { message: message, content: base64, branch: auth.branch };
+    if (sha) body.sha = sha;
+    return gh('/repos/' + auth.repo + '/contents/' + encodeURI(path), { method: 'PUT', body: body });
+  }
+
+  function delFile(path, message, sha) {
+    return gh('/repos/' + auth.repo + '/contents/' + encodeURI(path), {
+      method: 'DELETE',
+      body: { message: message, sha: sha, branch: auth.branch }
+    });
+  }
+
+  /* 목록 json 을 읽어 { sha, items } 로 준다 (파일이 없으면 빈 배열) */
+  function readList(kind) {
+    return getFile('data/' + kind + '.json').then(function (cur) {
+      var data = { items: [] };
+      if (cur && cur.content) {
+        try { data = JSON.parse(unb64(cur.content)) || data; } catch (e) {}
+      }
+      return { sha: cur && cur.sha, items: Array.isArray(data.items) ? data.items : [] };
+    });
+  }
+
+  /* 사이트에서 내리기 — 목록에서 빼고 본문 파일을 지운다
+
+     순서가 중요하다. 목록을 **먼저** 고친다. 본문을 먼저 지우면 그 사이에 실패했을 때
+     목록에는 있는데 본문이 없는 줄이 남아 사이트에 '찾지 못했습니다' 가 뜬다.
+     반대로 하면 최악의 경우 아무도 안 읽는 파일 하나가 남을 뿐이다. */
+  function unpublish(kind, item) {
+    var jsonPath = 'data/' + kind + '.json';
+    var mdPath = 'content/' + kind + '/' + item.slug + '.md';
+
+    return readList(kind)
+      .then(function (cur) {
+        var next = cur.items.filter(function (x) { return x.slug !== item.slug; });
+        return putFile(jsonPath, JSON.stringify({ items: next }, null, 2) + '\n',
+          '목록에서 뺌: ' + item.title, cur.sha);
+      })
+      .then(function () { return getFile(mdPath); })
+      .then(function (cur) {
+        /* 직접 만든 페이지(page 항목)를 쓰는 프로젝트는 .md 가 없다 — 그냥 넘어간다 */
+        if (!cur || !cur.sha) return null;
+        return delFile(mdPath, '지움: ' + item.title, cur.sha);
+      });
+  }
+
   /* ---------- 잠금 화면 ---------- */
   var gate = $('#gate'), work = $('#work');
 
@@ -418,6 +475,182 @@
       renderPrivate();
     }
   });
+
+  /* ---------- 파일 올리기 (스킬 파일·설명서) ---------- */
+  (function () {
+    var input = $('#u-file');
+    if (!input) return;
+    var st = $('#u-status');
+    var listBox = $('#u-list');
+    var MAX = 1024 * 1024;   /* 1MB — 이보다 크면 이 방식으로는 못 올린다 */
+    var picked = [];
+
+    function human(n) {
+      return n < 1024 ? n + 'B'
+           : n < 1024 * 1024 ? (n / 1024).toFixed(1) + 'KB'
+           : (n / 1024 / 1024).toFixed(2) + 'MB';
+    }
+    function folder() {
+      return $('#u-dir').value.trim().replace(/^\/+|\/+$/g, '') || 'docs';
+    }
+    function draw() {
+      $('#u-empty').hidden = picked.length > 0;
+      listBox.innerHTML = picked.map(function (f, i) {
+        var big = f.size > MAX;
+        return '<div class="draft-row">' +
+          '<span class="badge' + (big ? ' b-lock' : '') + '">' +
+            (big ? '너무 큼 · ' + human(f.size) : human(f.size)) + '</span>' +
+          '<span class="draft-t">' + esc(f.name) +
+            '<small>' + esc(folder() + '/' + f.name) + '</small></span>' +
+          '<button type="button" class="mini" data-up="rm" data-i="' + i + '">빼기</button>' +
+          '</div>';
+      }).join('');
+    }
+
+    input.addEventListener('change', function () {
+      picked = picked.concat(Array.prototype.slice.call(input.files || []));
+      input.value = '';   /* 같은 파일을 다시 고를 수 있게 비운다 */
+      draw();
+      say(st, picked.length ? picked.length + '개를 골랐습니다.' : '');
+    });
+    $('#u-dir').addEventListener('input', draw);
+
+    listBox.addEventListener('click', function (e) {
+      var b = e.target.closest('button[data-up="rm"]');
+      if (!b) return;
+      picked.splice(+b.getAttribute('data-i'), 1);
+      draw();
+    });
+
+    function readFile(f) {
+      return new Promise(function (ok, no) {
+        var r = new FileReader();
+        r.onload = function () { ok(b64bytes(r.result)); };
+        r.onerror = function () { no(new Error(f.name + ' 을 읽지 못했습니다.')); };
+        r.readAsArrayBuffer(f);
+      });
+    }
+
+    function one(f) {
+      var path = folder() + '/' + f.name;
+      if (f.size > MAX) {
+        return Promise.reject(new Error(f.name + ' 은 1MB 가 넘습니다. GitHub 웹에서 올려 주세요.'));
+      }
+      return readFile(f).then(function (content) {
+        return getFile(path).then(function (cur) {
+          if (cur && cur.sha && !confirm(path + ' 이 이미 있습니다.\n덮어쓸까요?')) {
+            return { skipped: true, path: path };
+          }
+          return putRaw(path, content, (cur ? '고침' : '올림') + ': ' + path, cur && cur.sha)
+            .then(function () { return { path: path }; });
+        });
+      });
+    }
+
+    $('#u-send').addEventListener('click', function () {
+      if (!auth) { say(st, '먼저 토큰을 넣어 주세요.', 'ng'); return; }
+      if (!picked.length) { say(st, '올릴 파일을 골라 주세요.', 'ng'); return; }
+      var btn = $('#u-send');
+      btn.disabled = true;
+      var done = [], skipped = [];
+
+      picked.reduce(function (p, f) {
+        return p.then(function () {
+          say(st, f.name + ' 올리는 중…');
+          return one(f).then(function (r) { (r.skipped ? skipped : done).push(r.path); });
+        });
+      }, Promise.resolve()).then(function () {
+        picked = []; draw();
+        say(st, '올렸습니다: ' + (done.join(', ') || '없음') +
+          (skipped.length ? ' · 건너뜀: ' + skipped.join(', ') : ''), 'ok');
+      }).catch(function (err) {
+        say(st, '실패: ' + err.message, 'ng');
+      }).then(function () { btn.disabled = false; });
+    });
+
+    draw();
+  })();
+
+  /* ---------- 올린 것 관리 (내리기) ---------- */
+  (function () {
+    var box = $('#pub-list');
+    if (!box) return;
+    var st = $('#pub-status');
+    var cache = { posts: [], projects: [] };
+    var loaded = false;
+
+    function row(kind, it) {
+      var label = kind === 'posts' ? '글' : '프로젝트';
+      var where = kind === 'posts'
+        ? 'blog/post.html?slug=' + encodeURIComponent(it.slug)
+        : (it.page ? 'projects/' + it.page
+                   : 'projects/detail.html?slug=' + encodeURIComponent(it.slug));
+      return '<div class="draft-row">' +
+        '<span class="badge">' + label + '</span>' +
+        '<span class="draft-t">' + esc(it.title) +
+          '<small>' + esc(it.date || '') + ' · ' + esc(it.slug) +
+          (it.page ? ' · 직접 만든 페이지' : '') + '</small>' +
+        '</span>' +
+        '<a class="mini" href="' + esc(where) + '" target="_blank" rel="noopener">보기</a>' +
+        '<button type="button" class="mini" data-pub="del" data-kind="' + kind +
+          '" data-slug="' + esc(it.slug) + '">내리기</button>' +
+        '</div>';
+    }
+
+    function draw() {
+      var all = cache.posts.map(function (it) { return row('posts', it); })
+        .concat(cache.projects.map(function (it) { return row('projects', it); }));
+      box.innerHTML = all.join('');
+      $('#pub-empty').hidden = all.length > 0;
+    }
+
+    function reload() {
+      if (!auth) { say(st, '먼저 토큰을 넣어 주세요.', 'ng'); return; }
+      say(st, '저장소에서 목록을 읽는 중…');
+      Promise.all([readList('posts'), readList('projects')])
+        .then(function (r) {
+          cache.posts = r[0].items;
+          cache.projects = r[1].items;
+          loaded = true;
+          draw();
+          say(st, '저장소의 지금 상태입니다.', 'ok');
+        })
+        .catch(function (err) { say(st, '읽지 못했습니다: ' + err.message, 'ng'); });
+    }
+
+    $('#pub-reload').addEventListener('click', reload);
+    $('#tab-manage') && $('#tab-manage').addEventListener('click', function () {
+      if (!loaded) reload();
+    });
+
+    box.addEventListener('click', function (e) {
+      var b = e.target.closest('button[data-pub="del"]');
+      if (!b) return;
+      var kind = b.getAttribute('data-kind');
+      var slug = b.getAttribute('data-slug');
+      var it = cache[kind].filter(function (x) { return x.slug === slug; })[0];
+      if (!it) return;
+
+      if (!confirm(
+        '"' + it.title + '" 을 사이트에서 내립니다.\n\n' +
+        '목록에서 빼고 본문 파일을 지웁니다.\n' +
+        'GitHub 기록에는 남아 있어 나중에 되살릴 수 있습니다.\n\n계속할까요?'
+      )) return;
+
+      b.disabled = true;
+      say(st, '내리는 중…');
+      unpublish(kind, it).then(function () {
+        cache[kind] = cache[kind].filter(function (x) { return x.slug !== slug; });
+        draw();
+        say(st, '내렸습니다. 사이트 반영까지 1~2분 걸립니다.' +
+          (it.page ? ' 직접 만든 페이지 projects/' + it.page +
+                     ' 는 남아 있습니다. 필요하면 저장소에서 지우세요.' : ''), 'ok');
+      }).catch(function (err) {
+        b.disabled = false;
+        say(st, '실패: ' + err.message, 'ng');
+      });
+    });
+  })();
 
   /* ---------- 시작 ---------- */
   initGate();
