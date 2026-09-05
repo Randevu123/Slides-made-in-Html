@@ -90,6 +90,8 @@
       <button type="button" role="tab" aria-selected="true"  aria-controls="pane-post"    id="tab-post">새 글</button>
       <button type="button" role="tab" aria-selected="false" aria-controls="pane-project" id="tab-project">새 프로젝트</button>
       <button type="button" role="tab" aria-selected="false" aria-controls="pane-private" id="tab-private">비공개 일기</button>
+      <button type="button" role="tab" aria-selected="false" aria-controls="pane-upload"  id="tab-upload">파일 올리기</button>
+      <button type="button" role="tab" aria-selected="false" aria-controls="pane-manage"  id="tab-manage">올린 것 관리</button>
       <button type="button" role="tab" aria-selected="false" aria-controls="pane-help"    id="tab-help">도움말</button>
     </div>
 
@@ -204,6 +206,62 @@
       <p class="note" id="private-empty" hidden>아직 비공개 글이 없습니다. "새 글"에서 비공개를 고르고 저장하면 여기에 쌓입니다.</p>
     </div>
 
+    <!-- 파일 올리기 -->
+    <div class="tabpane" id="pane-upload" role="tabpanel" aria-labelledby="tab-upload" hidden>
+      <p class="sec-sub">
+        스킬 파일(<code>.skill</code>)이나 설명서(<code>.md</code>)처럼 <b>글이 아닌 파일</b>을
+        저장소에 그대로 올립니다. 글·프로젝트 목록에는 나타나지 않고 파일만 놓입니다.
+      </p>
+
+      <div class="form" style="margin-top:24px">
+        <div class="field">
+          <label for="u-dir">올릴 폴더</label>
+          <input type="text" id="u-dir" value="docs" spellcheck="false" autocomplete="off">
+          <span class="hint">저장소 뿌리부터의 경로입니다. 기존 스킬 파일들이 <code>docs/</code> 에 있습니다.</span>
+        </div>
+        <div class="field">
+          <label for="u-file">파일 고르기 <span class="hint">(여러 개 골라도 됩니다)</span></label>
+          <input type="file" id="u-file" multiple>
+        </div>
+
+        <div class="rows" id="u-list" style="margin-top:8px"></div>
+        <p class="note" id="u-empty">아직 고른 파일이 없습니다.</p>
+
+        <div class="form-foot">
+          <button type="button" class="btn btn-1" id="u-send">저장소에 올리기</button>
+          <span class="status" id="u-status" role="status"></span>
+        </div>
+      </div>
+
+      <div class="warn" style="margin-top:28px">
+        <b>파일 하나에 1MB 까지</b>
+        이 방식은 파일이 1MB 를 넘으면 쓸 수 없습니다. 더 큰 파일은 GitHub 웹에서
+        <b>Add file → Upload files</b> 로 올리세요.
+        참고로 <code>docs/slides-in-html.skill</code> 은 약 88KB 입니다.
+      </div>
+    </div>
+
+    <!-- 올린 것 관리 -->
+    <div class="tabpane" id="pane-manage" role="tabpanel" aria-labelledby="tab-manage" hidden>
+      <p class="sec-sub">
+        저장소에 <b>지금 올라가 있는</b> 글과 프로젝트입니다. 사이트가 아니라 저장소를 직접 읽으므로
+        방금 올린 것도 바로 보입니다. 내리면 목록에서 빠지고 본문 파일이 지워집니다.
+        사이트에서는 사라지지만 <b>GitHub 기록에는 남아</b> 나중에 되살릴 수 있습니다.
+      </p>
+      <div class="form-foot" style="margin-top:16px">
+        <button type="button" class="btn" id="pub-reload">목록 새로 읽기</button>
+        <span class="status" id="pub-status" role="status"></span>
+      </div>
+      <div class="rows" id="pub-list" style="margin-top:24px"></div>
+      <p class="note" id="pub-empty" hidden>저장소에 올라가 있는 글이나 프로젝트가 없습니다.</p>
+      <div class="warn" style="margin-top:28px">
+        <b>직접 만든 페이지를 쓰는 프로젝트</b>
+        목록에 <code>page</code> 가 적힌 프로젝트(예: 직접 쓴 HTML 페이지)는 목록에서만 빠집니다.
+        <code>projects/</code> 안의 그 HTML 파일은 <b>남아 있습니다.</b> 주소를 아는 사람은 계속 열 수 있으니,
+        정말 없애려면 저장소에서 그 파일도 지우세요.
+      </div>
+    </div>
+
     <!-- 도움말 -->
     <div class="tabpane" id="pane-help" role="tabpanel" aria-labelledby="tab-help" hidden>
       <div class="stack-24">
@@ -222,8 +280,17 @@
         </div>
         <div class="panel">
           <p class="panel-h">지우려면</p>
-          <p class="row-d">저장소에서 해당 <code>.md</code> 파일을 지우고
-            <code>data/</code> 의 json 에서 그 줄을 빼면 됩니다. (관리 화면에는 아직 삭제 기능이 없습니다)</p>
+          <p class="row-d"><b>올린 것 관리</b> 탭에서 <b>내리기</b>를 누르면 됩니다.
+            <code>data/</code> 의 json 에서 그 줄을 빼고 <code>content/</code> 의
+            <code>.md</code> 파일을 지웁니다. 커밋 두 번으로 끝납니다.
+            지운 뒤에도 GitHub 기록에는 남아 있어 되살릴 수 있습니다.</p>
+        </div>
+        <div class="panel">
+          <p class="panel-h">스킬 파일·설명서를 올리려면</p>
+          <p class="row-d"><b>파일 올리기</b> 탭에서 폴더(기본 <code>docs</code>)를 정하고 파일을 고르면
+            그대로 저장소에 올라갑니다. 같은 이름이 있으면 덮어쓸지 물어봅니다.
+            글·프로젝트 목록에는 나타나지 않으니, 사이트에서 보이게 하려면
+            프로젝트 본문에 <code>[설명서](../docs/파일이름.md)</code> 처럼 링크를 거세요.</p>
         </div>
         <div class="panel">
           <p class="panel-h">수정 제안 스프레드시트</p>
