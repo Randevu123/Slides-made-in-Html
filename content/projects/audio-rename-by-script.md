@@ -106,3 +106,8 @@ Whisper가 "김민수 씨"라고 잘못 들어도, 그걸로 원고를 뒤져 "�
 그래서 검증을 더 정교하게 만드는 대신 **실제 파일 다섯 개로 먼저 돌려 보기로** 했다. 가짜 데이터를 아무리 다듬어도 진짜 한 번만 못하다는 쪽에 걸었다.
 
 그게 맞았는지는 실제로 돌려 봐야 알 것 같다.
+
+## 받을 파일
+
+- [audio-rename-by-script.skill](../docs/audio-rename-by-script/audio-rename-by-script.skill)
+- [오디오_이름붙이기_스킬_설명서.md](../docs/audio-rename-by-script/%EC%98%A4%EB%94%94%EC%98%A4_%EC%9D%B4%EB%A6%84%EB%B6%99%EC%9D%B4%EA%B8%B0_%EC%8A%A4%ED%82%AC_%EC%84%A4%EB%AA%85%EC%84%9C.md)
