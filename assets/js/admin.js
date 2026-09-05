@@ -128,6 +128,53 @@
     return gh('/repos/' + auth.repo + '/contents/' + encodeURI(path), { method: 'PUT', body: body });
   }
 
+  /* 1MB 가 넘으면 이 방식으로는 못 올린다. GitHub API 가 큰 파일을 다루는 방법이
+     따로 있어서, 이미 올라가 있는 큰 파일의 정보를 읽는 단계에서 먼저 막힌다. */
+  var UPLOAD_MAX = 1024 * 1024;
+
+  function readFileB64(f) {
+    return new Promise(function (ok, no) {
+      var r = new FileReader();
+      r.onload = function () { ok(b64bytes(r.result)); };
+      r.onerror = function () { no(new Error(f.name + ' 을 읽지 못했습니다.')); };
+      r.readAsArrayBuffer(f);
+    });
+  }
+
+  /* 파일 하나를 저장소의 path 에 올린다 (같은 이름이 있으면 덮어쓴다) */
+  function uploadFile(path, f) {
+    if (f.size > UPLOAD_MAX) {
+      return Promise.reject(new Error(f.name + ' 은 1MB 가 넘습니다. GitHub 웹에서 올려 주세요.'));
+    }
+    return readFileB64(f).then(function (content) {
+      return getFile(path).then(function (cur) {
+        return putRaw(path, content, (cur ? '고침' : '올림') + ': ' + path, cur && cur.sha);
+      });
+    });
+  }
+
+  /* 본문 맨 아래에 붙는 '받을 파일' 목록.
+     다시 저장할 때 두 번 붙지 않도록, 붙이기 전에 예전 것을 먼저 걷어낸다. */
+  var FILES_H = '## 받을 파일';
+
+  function stripFilesSection(md) {
+    var lines = String(md == null ? '' : md).split('\n');
+    var out = [], skip = false;
+    for (var i = 0; i < lines.length; i++) {
+      if (lines[i].trim() === FILES_H) { skip = true; continue; }
+      if (skip && /^##\s/.test(lines[i])) skip = false;
+      if (!skip) out.push(lines[i]);
+    }
+    return out.join('\n').replace(/\s+$/, '');
+  }
+
+  function filesSection(dir, names) {
+    if (!names.length) return '';
+    return '\n\n' + FILES_H + '\n\n' + names.map(function (n) {
+      return '- [' + n + '](../' + dir + '/' + encodeURI(n) + ')';
+    }).join('\n') + '\n';
+  }
+
   function delFile(path, message, sha) {
     return gh('/repos/' + auth.repo + '/contents/' + encodeURI(path), {
       method: 'DELETE',
@@ -378,6 +425,42 @@
     var draft = autosave(form, 'project');
     var st = $('#j-status-msg');
 
+    /* ---- 딸린 파일 (스킬 파일·설명서 등) ---- */
+    var attached = [];
+    var fileBox = $('#j-file-list');
+
+    function human(n) {
+      return n < 1024 ? n + 'B'
+           : n < 1024 * 1024 ? (n / 1024).toFixed(1) + 'KB'
+           : (n / 1024 / 1024).toFixed(2) + 'MB';
+    }
+    function dirFor() { return 'docs/' + (slugify($('#j-slug').value) || '<주소-이름>'); }
+    function drawFiles() {
+      if (!fileBox) return;
+      fileBox.innerHTML = attached.map(function (f, i) {
+        var big = f.size > UPLOAD_MAX;
+        return '<div class="draft-row">' +
+          '<span class="badge' + (big ? ' b-lock' : '') + '">' +
+            (big ? '너무 큼 · ' + human(f.size) : human(f.size)) + '</span>' +
+          '<span class="draft-t">' + esc(f.name) +
+            '<small>' + esc(dirFor() + '/' + f.name) + '</small></span>' +
+          '<button type="button" class="mini" data-jf="rm" data-i="' + i + '">빼기</button>' +
+          '</div>';
+      }).join('');
+    }
+    $('#j-files') && $('#j-files').addEventListener('change', function (e) {
+      attached = attached.concat(Array.prototype.slice.call(e.target.files || []));
+      e.target.value = '';          /* 같은 파일을 다시 고를 수 있게 비운다 */
+      drawFiles();
+    });
+    $('#j-slug').addEventListener('input', drawFiles);
+    fileBox && fileBox.addEventListener('click', function (e) {
+      var b = e.target.closest('button[data-jf="rm"]');
+      if (!b) return;
+      attached.splice(+b.getAttribute('data-i'), 1);
+      drawFiles();
+    });
+
     $('#j-preview').addEventListener('click', function () {
       $('#j-preview-box').hidden = false;
       $('#j-preview-out').innerHTML = window.MD.render($('#j-body').value);
@@ -422,10 +505,28 @@
       if (!m) return;
       if (!auth) { say(st, '먼저 토큰을 넣어 주세요.', 'ng'); return; }
       $('#j-save').disabled = true;
-      say(st, '저장소에 올리는 중…');
-      publish('projects', m.meta, m.body).then(function () {
-        say(st, '올렸습니다. 프로젝트 목록에 곧 나타납니다 (1~2분).', 'ok');
+
+      /* 딸린 파일을 **먼저** 올린다. 본문을 먼저 올리면 파일 올리기가 실패했을 때
+         있지도 않은 파일로 가는 링크가 사이트에 남는다. */
+      var dir = 'docs/' + m.meta.slug;
+      var names = attached.map(function (f) { return f.name; });
+
+      say(st, names.length ? '딸린 파일부터 올리는 중…' : '저장소에 올리는 중…');
+
+      attached.reduce(function (p, f) {
+        return p.then(function () {
+          say(st, f.name + ' 올리는 중…');
+          return uploadFile(dir + '/' + f.name, f);
+        });
+      }, Promise.resolve()).then(function () {
+        var body = stripFilesSection(m.body) + filesSection(dir, names);
+        say(st, '본문을 올리는 중…');
+        return publish('projects', m.meta, body);
+      }).then(function () {
+        say(st, '올렸습니다.' + (names.length ? ' 파일 ' + names.length + '개도 함께 올렸습니다.' : '') +
+          ' 프로젝트 목록에 곧 나타납니다 (1~2분).', 'ok');
         draft.clear();
+        attached = []; drawFiles();
         form.reset(); $('#j-date').value = today();
       }).catch(function (err) {
         say(st, '실패: ' + err.message, 'ng');
@@ -482,7 +583,7 @@
     if (!input) return;
     var st = $('#u-status');
     var listBox = $('#u-list');
-    var MAX = 1024 * 1024;   /* 1MB — 이보다 크면 이 방식으로는 못 올린다 */
+    var MAX = UPLOAD_MAX;
     var picked = [];
 
     function human(n) {
@@ -522,21 +623,12 @@
       draw();
     });
 
-    function readFile(f) {
-      return new Promise(function (ok, no) {
-        var r = new FileReader();
-        r.onload = function () { ok(b64bytes(r.result)); };
-        r.onerror = function () { no(new Error(f.name + ' 을 읽지 못했습니다.')); };
-        r.readAsArrayBuffer(f);
-      });
-    }
-
     function one(f) {
       var path = folder() + '/' + f.name;
       if (f.size > MAX) {
         return Promise.reject(new Error(f.name + ' 은 1MB 가 넘습니다. GitHub 웹에서 올려 주세요.'));
       }
-      return readFile(f).then(function (content) {
+      return readFileB64(f).then(function (content) {
         return getFile(path).then(function (cur) {
           if (cur && cur.sha && !confirm(path + ' 이 이미 있습니다.\n덮어쓸까요?')) {
             return { skipped: true, path: path };
